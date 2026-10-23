@@ -2,9 +2,10 @@
 
 | 항목 | 내용 |
 |---|---|
-| 버전 | 0.1 (초안) |
+| 버전 | 0.2 (초안) |
 | 작성일 | 2026-10-23 |
-| 근거 문서 | [PRD.md](PRD.md) 0.3, [CHALLENGES.md](CHALLENGES.md) 0.1, [IDEA.md](IDEA.md) |
+| 변경 이력 | 0.1 최초 작성 / 0.2 리뷰 결정 반영: 레인 비컨과 `Tick`(5.8, 7.4), `occurredAt`·`lastBidId` 정의, 입찰 응답에서 `serverTime` 제거, `500 BID_RESULT_UNKNOWN`(PRD OQ-44), `lane` 정지 컬럼(OQ-43), 간격 정지 규칙(OQ-10), 레인 스레드 장애 대응, 조건부 레인 쓰기, 단일 인스턴스 가드, crash-only, QueryDSL 제외 |
+| 근거 문서 | [PRD.md](PRD.md) 0.4, [CHALLENGES.md](CHALLENGES.md) 0.2, [IDEA.md](IDEA.md) |
 | 상태 | 초안. 1주차 계약(OpenAPI, STOMP 메시지 스키마)과 스키마의 바탕이 된다. CHALLENGES에서 아직 정하지 않은 과제는 여기서도 정하지 않고, 어느 후보를 고르든 바뀌지 않는 경계만 고정한다 |
 
 ---
@@ -18,6 +19,7 @@
 | `기본안` | PRD·IDEA가 이미 전제로 둔 방식. CHALLENGES 후보 표에서 `PRD 전제`로 표시된 것이다. 측정 결과에 따라 바뀔 수 있다 |
 | `잠정안` | PRD에 전제가 없어서, 흐름을 끝까지 그리려고 이 문서가 CHALLENGES 후보 중 하나를 임시로 고른 것. 해당 과제의 재현 테스트·측정으로 확정하고, 바뀌면 이 문서를 고친다. 목록은 [부록 A](#부록-a-미결-과제와-이-문서의-잠정안) |
 | `(제안)` | PRD에도 CHALLENGES에도 없는 설계 값이나 선택. 리뷰나 측정을 거쳐 확정한다 |
+| `결정됨 (리뷰)` | 0.1 리뷰에서 정한 설계 선택. 측정으로 답이 바뀌지 않거나 후보 선택과 무관한 보강이라 지금 정했다. CHALLENGES에는 "정함"으로 표시했다 |
 | `[OQ-nn]` | PRD 10장의 미결 질문. 이 문서도 정하지 않고 자리만 남긴다 |
 | `[CH-nn]` | CHALLENGES의 기술 과제 |
 | 절 번호 | `PRD 6.3`처럼 문서 이름을 붙인 번호는 그 문서의 절이고, 번호만 쓴 것(`6.3`)은 이 문서의 절이다. 표에 "PRD" 열이 있으면 그 열의 번호는 PRD의 절이다. `C1`~`C5`, `T0`~`T7`, `M-nn`, `AC-nn-n`은 PRD의 식별자다 |
@@ -32,8 +34,8 @@
 
 | 구분 | 내용 | 이유 |
 |---|---|---|
-| 1주차에 고정 | REST 경로와 HTTP 상태, STOMP 목적지, 레인 이벤트 봉투(`epoch`, `seq`, `occurredAt`, `serverTime`), 스냅샷 필드, 시각 형식, 테이블과 제약 | 프론트와 백엔드를 병렬로 개발하므로 계약을 먼저 고정한다 (IDEA 9.1 리스크 1). 계약을 고정한 뒤에는 필드를 추가하기 어렵다 (OQ-34의 근거와 같다) |
-| 측정·테스트를 거쳐 결정 | 동시성 제어(CH-04), 멱등 저장(CH-06), 타이머(CH-03), 브로드캐스트 튜닝·페이로드(CH-07), 복구 방식(CH-09) | CHALLENGES 원칙. 이 문서에서는 잠정안으로 그린다 |
+| 1주차에 고정 | REST 경로와 HTTP 상태, STOMP 목적지, 레인 이벤트 봉투(`epoch`, `seq`, `occurredAt`, `serverTime`)와 레인 비컨, 스냅샷 필드, 시각 형식, 테이블과 제약 | 프론트와 백엔드를 병렬로 개발하므로 계약을 먼저 고정한다 (IDEA 9.1 리스크 1). 계약을 고정한 뒤에는 필드를 추가하기 어렵다 (OQ-34의 근거와 같다) |
+| 측정·테스트를 거쳐 결정 | 동시성 제어(CH-04), 멱등 저장(CH-06), 타이머(CH-03), 브로드캐스트 튜닝·페이로드(CH-07), 복구 방식(CH-09). 시간 제한 값, 큐 상한, 커넥션 풀 분리, 발행 실행기, 멈춘 레인의 자동 정지(OQ-32) | CHALLENGES 원칙. 이 문서에서는 잠정안으로 그린다 |
 
 ---
 
@@ -63,7 +65,7 @@
 │                     │  └──────┬──────────────────────────────┬────────────┘  │
 │                     │         │ (4) LaneStore: 1 TX          │ (5) publish   │
 │                     ▼         ▼                              ▼               │
-│      JPA / QueryDSL repositories                 Simple Broker               │
+│      JPA repositories                            Simple Broker               │
 │  Jobs: payment expiry, idempotency TTL             /topic/lanes/{laneId}     │
 │  Clock (single bean, ms precision)                 /user/queue/notifications │
 │  Micrometer ──► /actuator/prometheus (management port)                       │
@@ -101,7 +103,7 @@
 | 언어 | Java 21 | `sealed interface`, `record`, `switch` 패턴 매칭을 엔진의 명령·이벤트 타입에 쓴다 |
 | 프레임워크 | Spring Boot 4.x (작성 시점 최신 안정 라인은 4.1. 1주차에 프로젝트를 만들 때 패치 버전까지 고정) | Spring Framework 7, Hibernate 7, Jackson 3 기준이다. 3.x 시절 자료와 설정 클래스·속성 이름이 다른 곳이 있다 |
 | 빌드 | Gradle (Kotlin DSL) (제안) | 멀티 모듈 `engine` / `app` (3.1) |
-| 영속 | Spring Data JPA, QueryDSL | QueryDSL은 OpenFeign 포크(`io.github.openfeign.querydsl`)를 쓴다. 원본 프로젝트는 유지보수가 느려졌고 Spring Data 문서도 포크를 안내한다. Hibernate 7과 호환되는지는 1주차에 스모크 테스트로 확인한다 |
+| 영속 | Spring Data JPA | 조회 전용 쿼리는 `@Query`(JPQL)와 DTO 프로젝션으로 쓴다. QueryDSL은 확정 스택에서 뺐다 (결정됨 (리뷰)). 쓰는 곳이 조회 2~3개뿐이라 Boot 4·Hibernate 7 호환 확인과 애노테이션 처리 설정만 늘어난다. 조건을 조합하는 동적 조회가 여러 개 생기면 다시 본다 (CHALLENGES 부록 A) |
 | DB | MySQL 8.4 LTS (제안) | `CHECK` 제약을 강제하고(8.0.16부터), `DATETIME(3)`을 쓴다 |
 | 마이그레이션 | Flyway | MySQL 지원 모듈(`flyway-mysql`)이 따로 필요하다 |
 | 인증 | Spring Security + JWT | JWT 발급·검증은 Spring Security의 `spring-security-oauth2-jose`(Nimbus)로 한다 (제안). 별도 JWT 라이브러리 없이 만료 검증기(`JwtTimestampValidator`)에 주입한 `Clock`을 넣을 수 있다 (9장 R10) |
@@ -116,6 +118,7 @@
 ### 1.4 배포 단위
 
 - docker-compose 서비스: `app`, `mysql`, `prometheus`, `grafana`. 부하 발생기(k6)는 다른 머신에 둔다 (PRD 9.1).
+- 배포는 기존 `app` 컨테이너를 멈춘 뒤 새 컨테이너를 띄운다(stop → start). 두 인스턴스가 같은 DB로 겹쳐 뜨면 단일 작성자가 깨지므로, 두 번째 인스턴스는 단일 인스턴스 가드에 막혀 기동하지 않는다 (5.5.9).
 - 개발 중에는 Vite 개발 서버의 프록시가 `/api`, `/ws`를 백엔드로 넘긴다. 브라우저에는 같은 출처로 보이므로 CORS 설정이 필요 없다.
 - 배포 때 SPA 정적 파일을 어디서 서빙하고 TLS를 어디서 끝낼지는 7주차 EC2 환경을 구성할 때 정한다. 후보는 두 가지다. (a) 앱이 프론트 빌드 결과를 정적 리소스로 함께 서빙하고 TLS도 앱이 맡는다. 구성 요소가 늘지 않는다. (b) 리버스 프록시 컨테이너를 앞에 둔다. 정적 파일과 인증서 관리가 편하다. 대신 WebSocket 연결 5,000개가 프록시도 지나가므로 프록시의 연결 한도도 CH-07 튜닝 대상이 된다. 어느 쪽이든 브라우저에는 한 출처로 보이게 한다.
 - GitHub Actions: 백엔드 빌드·테스트(Testcontainers MySQL), 프론트 타입 검사·린트·빌드, 이미지 빌드. 정적 검사(9장 시간 출처 규칙, 3.3 의존 규칙)도 이 단계에서 돈다.
@@ -183,13 +186,13 @@ receipt:<상관 ID>
 입찰 응답(REST)과 그 입찰의 브로드캐스트(STOMP)는 다른 연결로 오므로 어느 쪽이 먼저 도착할지 모른다. 그래서 두 채널의 역할을 나눈다.
 
 - **레인 화면 상태(현재가, 마감 시각 등)는 브로드캐스트와 스냅샷으로만 바꾼다.** 입찰 응답으로는 바꾸지 않는다. 화면 상태의 출처가 하나라서 시퀀스 규칙(7.4)이 깨지지 않는다.
-- **입찰 응답은 "내 입찰"의 결과만 바꾼다.** 성공 응답에는 이 입찰이 만든 `BID_ACCEPTED` 이벤트의 `seq`를 넣는다 (제안).
-- 클라이언트는 "내가 최고 입찰자"를 이렇게 판정한다.
-  - `BID_ACCEPTED(seq)`를 반영할 때마다 레인별로 `lastBidSeq = seq`를 기록한다.
-  - 성공 응답(`seq = S`)을 받았을 때, 아직 `S`까지 반영하지 못했으면 "내가 최고 입찰자"로 표시한다. 이미 반영했으면 `lastBidSeq == S`일 때만 표시한다.
-  - 그 뒤 같은 Lot에 `seq > S`인 `BID_ACCEPTED`가 오면 표시를 지운다. 최고 입찰자는 연속으로 입찰할 수 없으므로 그 입찰은 언제나 다른 사람의 것이다 (PRD 6.3).
-  - 스냅샷을 다시 받으면 스냅샷의 `me.isHighestBidder`로 덮어쓴다.
-- 409 응답에도 서버의 현재 `epoch`·`seq`를 넣는다 (제안). 초당 1,000건 중 대부분이 409라서, 409를 받을 때마다 스냅샷을 다시 부르면 스냅샷 요청이 입찰 수만큼 생긴다. 클라이언트는 409를 받아도 스냅샷을 부르지 않고 응답의 `seq`까지 브로드캐스트가 도착하기를 기다린다. 그 사이 갭이 보이면 7.6의 재동기화가 처리한다.
+- **입찰 응답은 "내 입찰"의 결과만 바꾼다.** 성공 응답에는 이 입찰의 `bidId`와, 이 입찰이 만든 `BID_ACCEPTED` 이벤트의 `epoch`·`seq`를 넣는다 (제안).
+- 클라이언트는 "내가 최고 입찰자"를 상태로 저장하지 않고, 레인 상태가 바뀔 때마다 계산한다 (결정됨 (리뷰)).
+  - 레인 상태의 `state.lot.lastBidId`(마지막으로 수락된 입찰의 ID, 7.2)가 내 성공 응답의 `bidId`와 같으면 내가 최고 입찰자다. 뒤에 다른 입찰이 수락되면 `lastBidId`가 바뀌므로 표시도 저절로 꺼진다.
+  - 성공 응답을 받았는데 같은 epoch에서 아직 그 `seq`까지 반영하지 못했으면, 반영할 때까지 "내가 최고 입찰자"로 먼저 표시한다. 응답보다 앞선 시점의 스냅샷이 늦게 도착해도 반영한 `seq`가 응답의 `seq`보다 작으므로 표시가 꺼지지 않는다.
+  - 내 `bidId`를 모르면(페이지를 새로 연 경우) 스냅샷의 `me.isHighestBidder`를 쓴다.
+  - `bidId`는 입찰 행의 ID이고 회원 식별자가 아니다 (PRD 9.6). `lastBidId`는 DB에 남으므로(`lot.last_bid_id`) 재시작으로 epoch가 바뀌어도 비교가 유효하다.
+- 409 응답에도 서버의 현재 `epoch`·`seq`를 넣는다 (제안). 초당 1,000건 중 대부분이 409라서, 409를 받을 때마다 스냅샷을 다시 부르면 스냅샷 요청이 입찰 수만큼 생긴다. 클라이언트는 409를 받아도 스냅샷을 부르지 않고 응답의 `seq`까지 브로드캐스트가 도착하기를 기다린다. 기다림에 시간 제한은 두지 않는다. 그 사이 갭이 보이면 7.6의 재동기화가 처리하고, 브로드캐스트를 잃었다면 다음 레인 비컨(7.4)이 알려 준다.
 
 ### 2.6 참고: SSE
 
@@ -256,8 +259,8 @@ backend/
 │   │   ├── LaneState                       레인의 메모리 상태. 레인 스레드만 읽고 쓴다
 │   │   ├── LaneView                        불변 스냅샷. 스냅샷 API와 브로드캐스트의 원천
 │   │   ├── LotPlan                         레인의 Lot 순서. 회차 시작 뒤 바뀌지 않는다
-│   │   ├── LaneCommand                     sealed: Activate, PlaceBid, CheckDeadline, EndGap, Pause, Resume, ForceClose
-│   │   ├── LaneEvent                       sealed: LotStarted, BidAccepted, LotClosed, LanePaused, LaneResumed, LaneFinished
+│   │   ├── LaneCommand                     sealed: Activate, PlaceBid, CheckDeadline, EndGap, Tick, Pause, Resume, ForceClose
+│   │   ├── LaneEvent                       sealed: LotStarted, BidAccepted, LotClosed, LanePaused, LaneResumed, LaneFinished, Heartbeat(상태 이벤트 아님)
 │   │   └── BidRejection                    입찰 조건 5~9의 거절 사유
 │   ├── session/
 │   │   ├── SessionAutoStarter              예정 시각 타이머 등록·재등록 (M-06)
@@ -284,7 +287,7 @@ backend/
     │   ├── session/                        회차 생성·수정·편성·시작 (SessionStarter)
     │   ├── control/                        정지·재개·강제 종료 명령을 레인 큐로
     │   ├── policy/                         호가 정책 버전 관리. 엔티티를 engine.policy로 변환
-    │   └── runtime/                        LaneRegistry, JpaLaneStore, 타이머 구현, 재시작 복구
+    │   └── runtime/                        LaneRegistry, JpaLaneStore, 타이머 구현, 재시작 복구, 단일 인스턴스 가드
     ├── bid/                                입찰 API, 큐 밖 검증(조건 1~4), 내 입찰 내역
     ├── trade/                              거래, 모의 결제, 결제 기한 만료 작업, PaymentGateway(가짜 구현)
     ├── realtime/                           STOMP 설정, 인증 인터셉터, LaneEventPublisher 구현, 스냅샷 API
@@ -299,7 +302,7 @@ backend/
 | `api` | 컨트롤러, 요청·응답 DTO. 공개 DTO는 여기서만 만든다 |
 | `application` | 유스케이스와 트랜잭션 경계 |
 | `domain` | 엔티티, 리포지토리 인터페이스, 도메인 규칙 |
-| `infra` | QueryDSL 조회 구현, 외부 어댑터(이미지 저장소, 결제) |
+| `infra` | 조회 전용 쿼리 구현(`@Query`, DTO 프로젝션), 외부 어댑터(이미지 저장소, 결제) |
 
 ### 3.3 의존 규칙
 
@@ -307,7 +310,7 @@ backend/
 2. 층의 방향은 `api → application → domain ← infra`다. 컨트롤러는 엔티티를 반환하지 않는다. 엔티티나 엔진 상태를 그대로 직렬화하지 않으므로 최저 낙찰가가 응답에 섞일 길이 없다 (PRD 9.6).
 3. 엔티티 연관관계(`@ManyToOne` 등)는 같은 도메인 패키지 안에서만 둔다. 다른 도메인은 ID 값으로 참조한다. 예: `Trade.lotId`는 `Long`이다.
 4. 쓰기는 자기 도메인 테이블에만 한다. 예외는 PRD가 원자성을 요구하는 레인 전이 하나다. 마감과 거래 생성은 한 트랜잭션이어야 하므로(CH-09 시나리오 1), `auction.runtime`의 `JpaLaneStore`가 트랜잭션 안에서 `trade`의 생성 메서드를 부른다. 호출 방향은 `auction → trade`이고 반대 방향은 없다.
-5. 조회 전용 QueryDSL 쿼리(내 입찰 내역, 내 거래)는 화면에 필요한 만큼 다른 도메인 테이블을 조인해도 된다. 결과는 읽기 전용 DTO로만 나간다.
+5. 조회 전용 쿼리(내 입찰 내역, 내 거래)는 화면에 필요한 만큼 다른 도메인 테이블을 조인해도 된다. 결과는 읽기 전용 DTO로만 나간다.
 6. 도메인 패키지끼리 순환 의존하지 않는다. 허용 방향: `bid → auction`, `auction → trade, notification, audit`, `trade → member, notification`, `realtime → auction.runtime`(스냅샷 조회). 모든 패키지는 `global`을 쓸 수 있다.
 7. 위 규칙과 9장의 시간 출처 규칙은 CI 정적 검사로 확인한다. 도구는 CH-01에 적은 "ArchUnit 규칙 또는 빌드 단계의 검색" 중에서 고른다.
 
@@ -316,8 +319,8 @@ backend/
 | 포트 | 정의 위치 | MVP 구현 | 테스트 구현 | 교체 후보 |
 |---|---|---|---|---|
 | `Clock` (`java.time`) | — | `Clock.tick(Clock.systemUTC(), Duration.ofMillis(1))` (9장 R1·R2) | 손으로 움직이는 가짜 시계 | — |
-| `TimerScheduler` | engine.port | 단일 스레드 `ScheduledExecutorService`. 시각이 되면 명령을 레인 큐에 넣기만 한다 | `FakeScheduler` (시간을 돌리면 그 사이 예약을 시각 순서대로 실행) | 타이머 방식은 CH-03 |
-| `LaneStore` | engine.port | `JpaLaneStore` (JPA + `TransactionTemplate`) | 메모리 구현, 장애 주입 데코레이터 (CH-05) | 실험 ①의 DB 락 후보는 이 경계 뒤에서 구현한다. Redis 구현은 C-02 |
+| `TimerScheduler` | engine.port | 단일 스레드 `ScheduledExecutorService`. 시각이 되면 명령을 레인 큐에 넣기만 한다. 1초 `Tick`(5.8)도 같은 스레드가 고정 주기로 넣는다. 주기 작업은 예외를 밖으로 던지지 않는다. 던지면 `ScheduledExecutorService`가 그 뒤 실행을 하지 않는다 | `FakeScheduler` (시간을 돌리면 그 사이 예약을 시각 순서대로 실행) | 타이머 방식은 CH-03 |
+| `LaneStore` | engine.port | `JpaLaneStore` (JPA + `TransactionTemplate`). 엔티티를 읽어 고치지 않고 PK 기준 UPDATE 문을 바로 쓴다 (6.3) | 메모리 구현, 장애 주입 데코레이터 (CH-05) | 실험 ①의 DB 락 후보는 이 경계 뒤에서 구현한다. Redis 구현은 C-02 |
 | `LaneEventPublisher` | engine.port | `SimpMessagingTemplate`으로 레인 토픽에 발행 | 기록용 구현 | 다중 서버 팬아웃 (10장) |
 | `LaneNotifier` | engine.port | 알림 실행기로 넘긴다 (S-01) | 기록용 구현 | — |
 | `BidIncrementPolicy` | engine.policy | DB의 정책 버전으로 만든 구간 구현 (M-08) | 같은 구현 | — |
@@ -411,7 +414,7 @@ CREATE TABLE refresh_token (
     member_id   BIGINT      NOT NULL,
     token_hash  CHAR(64)    NOT NULL,                 -- SHA-256 hex. 원문은 저장하지 않는다 (11장)
     expires_at  DATETIME(3) NOT NULL,
-    revoked_at  DATETIME(3) NULL,                     -- 재발급(회전) 또는 재사용 감지로 폐기한 시각
+    revoked_at  DATETIME(3) NULL,                     -- 재발급(회전)으로 폐기한 시각
     created_at  DATETIME(3) NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_refresh_token_hash (token_hash),
@@ -526,19 +529,25 @@ CREATE TABLE auction_session (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE lane (
-    id           BIGINT      NOT NULL AUTO_INCREMENT,
-    session_id   BIGINT      NOT NULL,
-    lane_no      TINYINT     NOT NULL,
-    status       VARCHAR(20) NOT NULL,
-    finished_at  DATETIME(3) NULL,
-    created_at   DATETIME(3) NOT NULL,
-    updated_at   DATETIME(3) NOT NULL,
+    id                   BIGINT      NOT NULL AUTO_INCREMENT,
+    session_id           BIGINT      NOT NULL,
+    lane_no              TINYINT     NOT NULL,
+    status               VARCHAR(20) NOT NULL,
+    paused_remaining_ms  INT         NULL,            -- 입찰 단계에서 정지할 때 저장한 마감까지 남은 시간 (T5). 간격 중 정지와 복구 정지는 NULL
+    pause_cause          VARCHAR(20) NULL,            -- PAUSED일 때 정지 원인. 복구는 이미 PAUSED인 레인의 원인을 덮어쓰지 않는다 (OQ-43)
+    finished_at          DATETIME(3) NULL,
+    created_at           DATETIME(3) NOT NULL,
+    updated_at           DATETIME(3) NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_lane_session_no (session_id, lane_no),
     KEY idx_lane_status (status),                     -- 재시작 복구 대상 조회
     CONSTRAINT fk_lane_session FOREIGN KEY (session_id) REFERENCES auction_session (id),
     CONSTRAINT ck_lane_no CHECK (lane_no BETWEEN 1 AND 4),
-    CONSTRAINT ck_lane_status CHECK (status IN ('READY', 'RUNNING', 'PAUSED', 'FINISHED'))
+    CONSTRAINT ck_lane_status CHECK (status IN ('READY', 'RUNNING', 'PAUSED', 'FINISHED')),
+    CONSTRAINT ck_lane_pause CHECK (
+        (status = 'PAUSED' AND pause_cause IN ('OPERATOR', 'SESSION_BULK', 'RECOVERY')
+                           AND (paused_remaining_ms IS NULL OR paused_remaining_ms > 0))
+        OR (status <> 'PAUSED' AND pause_cause IS NULL AND paused_remaining_ms IS NULL))
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE lot (
@@ -552,6 +561,7 @@ CREATE TABLE lot (
     current_price       BIGINT      NOT NULL,         -- 입찰 전에는 start_price
     highest_bidder_id   BIGINT      NULL,
     bid_count           INT         NOT NULL,
+    last_bid_id         BIGINT      NULL,             -- 마지막 수락 입찰(bid.id). 메시지의 lastBidId (7.2). bid → lot과 순환이라 FK는 두지 않는다
     bidding_started_at  DATETIME(3) NULL,             -- t0. INV-4 재계산의 시작점
     deadline_at         DATETIME(3) NULL,             -- BIDDING 동안의 현재 마감 시각
     closed_at           DATETIME(3) NULL,             -- SOLD 또는 UNSOLD가 된 시각 (T4 간격의 기준)
@@ -572,6 +582,8 @@ CREATE TABLE lot (
         (status = 'UNSOLD' AND unsold_reason IN ('NO_BID', 'RESERVE_NOT_MET', 'FORCE_CLOSED'))
         OR (status <> 'UNSOLD' AND unsold_reason IS NULL)),
     CONSTRAINT ck_lot_sold_winner CHECK (status <> 'SOLD' OR highest_bidder_id IS NOT NULL),
+    CONSTRAINT ck_lot_last_bid CHECK ((bid_count = 0 AND last_bid_id IS NULL)
+                                      OR (bid_count > 0 AND last_bid_id IS NOT NULL)),
     CONSTRAINT ck_lot_started CHECK (status = 'PENDING' OR bidding_started_at IS NOT NULL),
     CONSTRAINT ck_lot_closed CHECK (status NOT IN ('SOLD', 'UNSOLD') OR closed_at IS NOT NULL)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
@@ -602,7 +614,8 @@ CREATE TABLE lane_transition (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 ```
 
-- `lot`의 `current_price`, `highest_bidder_id`, `bid_count`, `deadline_at`은 입찰 이력에서 계산할 수 있는 값을 Lot 행에 함께 둔 것이다. 수락된 입찰마다 입찰 INSERT와 같은 트랜잭션의 UPDATE 1번으로 갱신한다. 이 값들을 두는 이유는 세 가지다. (1) 재시작 복구(M-17)가 Lot 행만 읽어서 끝난다. (2) 실험 ①의 DB 락 후보(CH-04 A·B)는 이 행을 조건부로 갱신해야 같은 조건에서 비교된다. (3) 재계산 스크립트가 저장된 값과 다시 계산한 값을 비교해 볼 수 있다.
+- `lot`의 `current_price`, `highest_bidder_id`, `bid_count`, `last_bid_id`, `deadline_at`은 입찰 이력에서 계산할 수 있는 값을 Lot 행에 함께 둔 것이다. 수락된 입찰마다 입찰 INSERT와 같은 트랜잭션의 UPDATE 1번으로 갱신한다. 이 값들을 두는 이유는 세 가지다. (1) 재시작 복구(M-17)가 Lot 행만 읽어서 끝난다. (2) 실험 ①의 DB 락 후보(CH-04 A·B)는 이 행을 조건부로 갱신해야 같은 조건에서 비교된다. (3) 재계산 스크립트가 저장된 값과 다시 계산한 값을 비교해 볼 수 있다.
+- `lane.paused_remaining_ms`와 `pause_cause`는 재시작 복구가 정지 상태를 되살리는 데 쓴다 (5.5.9, 결정됨 (리뷰)). 레인이 입찰 단계인지 간격 단계인지는 컬럼이 아니라 Lot 상태로 안다. `BIDDING` Lot이 있으면 입찰 단계, 없으면 간격 단계다. 정지 중에 강제 종료한 레인도 간격 단계가 된다 (5.4). `lane_transition`은 이력이고 복구는 읽지 않는다.
 - 편성(M-05)은 `SCHEDULED` 동안에만 바뀐다. 그 동안 Lot에는 입찰도 이력도 없으므로, 레인의 Lot 목록을 지우고 새 순서로 다시 넣는다. `uk_lot_lane_seq`와 충돌하지 않는다.
 
 #### V5__bid.sql
@@ -767,7 +780,8 @@ CREATE TABLE notification (
 | 같은 Item을 동시에 여러 Lot에 편성 [OQ-28] | 막지 않는다 | 막기로 하면 편성 트랜잭션에서 검사한다. MySQL에는 부분 유니크 인덱스가 없어서, DB로 막으려면 생성 컬럼 + 유니크로 흉내 내야 한다 |
 | 재출품할 때 가격 변경 [OQ-28] | Lot이 편성 때 가격을 복사하므로 어느 쪽이든 경매 기록은 그대로다 | 바꿀 수 있게 하면 Item 가격 수정만 생긴다 |
 | 거절 응답의 저장 [CH-06] | `idempotency_record`에는 성공만 담는다 | 후보 A를 고르면 거절도 같은 테이블에 담는다. 보관량 문제는 6.6 |
-| 레인 런타임 테이블 [CH-09 후보 B] | 없다. `lane.status`와 `lot`의 컬럼으로 복구한다 | 후보 B를 고르면 `lane`에 컬럼을 더하거나 별도 테이블을 만든다 |
+| 레인 런타임 테이블 [CH-09 후보 B] | 없다. `lane`의 상태·정지 컬럼과 `lot`의 컬럼으로 복구한다 (후보 A + 정지 컬럼 2개) | 시퀀스를 영속화하게 되면(CH-08 B1) `lane`에 컬럼을 더한다 |
+| 레인 담당 펜싱 [CH-12 후보 B] | 없다. 단일 인스턴스 가드(5.5.9)로 막는다 | 다중 서버에 착수하면 `lane.owner_epoch`를 더하고 레인 트랜잭션에 조건으로 건다 (10장) |
 | 결제 기한 임박 알림의 중복 방지 [S-01] | 없다 | 임박 기준(부록 B)이 정해지면 `trade`에 알림 시각 컬럼을 더한다 |
 | 입찰 정지 해제 [OQ-26] | `member.bid_suspended_at`만 있다 | 정지 기간이 생기면 해제 시각 컬럼을 더한다 |
 
@@ -790,10 +804,12 @@ CREATE TABLE notification (
  HTTP thread: PlaceBid ─── offer ───► │ inbox: FIFO                                 │
  HTTP thread: Pause/Resume/ForceClose►│   bids: bounded (503) / others: unbounded   │
  Timer thread: CheckDeadline/EndGap ─►│                                             │
+ Timer thread: Tick (1s) ────────────►│                                             │
  SessionStarter: Activate ──────────► │ single writer loop:                         │
-                                      │   now = clock.instant()                     │
+                                      │   now = max(clock.instant(), lastNow)       │
                                       │   d = stateMachine.handle(state, cmd, now)  │
                                       │   1. store.persist(d)     (1 TX) ─────────────► MySQL
+                                      │      committedAt = clock.instant()          │
                                       │   2. state = d.next; view = new LaneView    │
                                       │   3. reply(future) ───────────────────────────► HTTP thread
                                       │   4. publisher.publish(event, ++seq) ─────────► Simple Broker
@@ -804,10 +820,13 @@ CREATE TABLE notification (
 
 **실행 순서는 고정이다.** ① 영속화(트랜잭션 1개) → ② 메모리 반영과 뷰 교체 → ③ 응답 → ④ 발행 → ⑤ 타이머 예약 → ⑥ 알림 넘김. ①이 실패하면 ②~⑥을 하지 않는다 (6.4). 이 순서가 PRD 6.3의 "DB 커밋 → 현재가 갱신 → 성공 응답 → 브로드캐스트"와 PRD 9.4의 "메모리는 캐시, 원본은 DB"를 코드 구조로 만든다.
 
+- 커밋 직후 `Clock`을 한 번 더 읽은 `committedAt`이 그 명령이 발행하는 이벤트의 `occurredAt`이다 (7.2). 판정에 쓴 `now`(입찰이면 `acceptedAt`)와는 다른 값이다.
+- ③~⑥ 중 하나가 실패해도 상태는 되돌리지 않는다. 이미 커밋된 사실이기 때문이다. 실패는 기록하고 다음 명령으로 넘어간다. 타이머 예약 실패는 `Tick`이 메운다 (5.8).
+
 ### 5.2 큐 규칙
 
 - 레인마다 단일 작성자 `기본안` (PRD C2). `LaneState`는 레인 스레드만 읽고 쓴다. 다른 스레드는 불변 `LaneView`만 읽는다.
-- 처리 시각은 명령을 꺼낸 직후 `clock.instant()`를 한 번 읽은 값이다. 그 명령 안의 모든 판단(마감 비교, 수락 시각, 새 마감 계산)에 같은 값을 쓴다 (C3).
+- 처리 시각은 명령을 꺼낸 직후 `clock.instant()`를 한 번 읽은 값이다. 그 명령 안의 모든 판단(마감 비교, 수락 시각, 새 마감 계산)에 같은 값을 쓴다 (C3). 직전 명령의 처리 시각보다 작으면 직전 값을 쓴다. 레인 안에서는 시각이 뒤로 가지 않는다 (9장 R13).
 - **상한은 입찰에만 건다** (OQ-31). 대기 중인 입찰 수가 상한 이상이면 넣지 않고 `503`을 돌려준다. 타이머, 운영자, 회차 명령은 상한과 관계없이 넣는다. 모두 같은 큐에 넣으므로 순서(C2)는 지켜진다. 입찰이 큐를 채운 상태에서 정지 명령이 `503`을 받으면 안 되기 때문이다.
 - 레인 스레드의 구현(전용 스레드 / 레인별 순서를 보장하는 공유 실행기 / 가상 스레드)은 CH-04에서 고른다. 레인이 최대 4개라 스레드 개수는 문제가 아니다.
 - 레인이 `FINISHED`가 되면 스레드, 큐, 타이머를 정리하고 마지막 뷰만 레지스트리에 남긴다 (CH-02 시나리오 6).
@@ -817,12 +836,15 @@ CREATE TABLE notification (
 | 명령 | 보내는 쪽 | 처리 조건 (큐 안, 처리 시각 기준) | 상태 변화 | 같은 트랜잭션에 쓰는 것 | 커밋 뒤 |
 |---|---|---|---|---|---|
 | `Activate(t0)` | `SessionStarter` (회차 시작 커밋 뒤) | 레인이 READY | 1번 Lot BIDDING, 마감 = t0 + 15초 | 없음 (회차 시작 트랜잭션에서 이미 커밋) | `LOT_STARTED`, 마감 확인 예약 |
-| `PlaceBid` | `BidService` | PRD 6.3 조건 5~9 | 현재가, 최고 입찰자, 입찰 수, 마감 갱신 | `bid` INSERT, `lot` UPDATE, 멱등 성공 기록 | 응답, `BID_ACCEPTED`, 밀림 알림 |
-| `CheckDeadline(lotId)` | 타이머 | 그 Lot이 BIDDING이고 처리 시각 ≥ 마감. 아니면 새 마감에 다시 예약 | Lot SOLD/UNSOLD, 레인은 간격 단계로 | `lot` UPDATE, SOLD면 `trade` INSERT | `LOT_CLOSED`, 낙찰·유찰 알림, 간격 종료 예약 |
-| `EndGap(lotId)` | 타이머 | 레인이 RUNNING이고 간격 단계, 처리 시각 ≥ 종료 시각 + 5초 | 다음 Lot BIDDING, 또는 레인 FINISHED | `lot` UPDATE, 또는 `lane` UPDATE + 전이 이력 + 회차 종료 집계 | `LOT_STARTED` 또는 `LANE_FINISHED` |
-| `Pause(cause)` | 운영자 API, 회차 일괄 정지 | 레인이 RUNNING | PAUSED, 남은 시간 저장 (T5) | `lane` UPDATE, 전이 이력, 감사 로그 | `LANE_PAUSED` |
-| `Resume(cause)` | 운영자 API, 회차 일괄 재개 | 레인이 PAUSED | RUNNING. 마감 재계산 (T5, T6) | `lane`·`lot` UPDATE, 전이 이력, 감사 로그 | `LANE_RESUMED`, 확인 예약 |
-| `ForceClose(lotId)` | 운영자 API | 대상이 BIDDING Lot (그 밖은 [OQ-41]) | Lot UNSOLD(`FORCE_CLOSED`). 5.5.8 | `lot` UPDATE, 마지막 Lot이면 `lane` UPDATE, 감사 로그 | `LOT_CLOSED`, 필요하면 `LANE_FINISHED` |
+| `PlaceBid` | `BidService` | PRD 6.3 조건 5~9 | 현재가, 최고 입찰자, 입찰 수, 마지막 입찰 ID, 마감 갱신 | `bid` INSERT, `lot` 조건부 UPDATE (6.3), 멱등 성공 기록 | 응답, `BID_ACCEPTED`, 밀림 알림 |
+| `CheckDeadline(lotId, gen)` | 타이머 | 그 Lot이 BIDDING이고 `gen`이 현재 마감 확인 세대와 같고 처리 시각 ≥ 마감. 세대가 다르면 버린다. 처리 시각 < 마감이면 새 마감에 같은 세대로 다시 예약 | Lot SOLD/UNSOLD, 레인은 간격 단계로 | `lot` 조건부 UPDATE, SOLD면 `trade` INSERT, 낙찰·유찰 알림 행 | `LOT_CLOSED`, 알림 개인 큐 전송, 간격 종료 예약 |
+| `EndGap(lotId, gen)` | 타이머 | 레인이 RUNNING이고 간격 단계, `gen`이 현재 간격 세대와 같고, 처리 시각 ≥ `gapEndsAt` | 다음 Lot BIDDING, 또는 레인 FINISHED | `lot` UPDATE, 또는 `lane` UPDATE + 전이 이력 + 회차 종료 집계 | `LOT_STARTED` 또는 `LANE_FINISHED` |
+| `Tick` | 타이머 (1초 주기, 5.8) | 레인이 `RUNNING`·`PAUSED` | `RUNNING`이면 마감 선적용(5.5.4)과, 간격 종료가 지났을 때 `EndGap`과 같은 처리. `PAUSED`면 상태를 바꾸지 않는다 (E7) | 위 처리가 일어날 때만 그 트랜잭션 | 비컨 주기가 되면 `HEARTBEAT` (7.4) |
+| `Pause(cause)` | 운영자 API, 회차 일괄 정지 | 레인이 RUNNING | PAUSED. 입찰 단계면 남은 시간 저장 (T5). 간격 단계면 저장하지 않음 (OQ-10) | `lane` UPDATE(상태, `paused_remaining_ms`, `pause_cause`), 전이 이력, 감사 로그 | `LANE_PAUSED` |
+| `Resume(cause)` | 운영자 API, 회차 일괄 재개 | 레인이 PAUSED | RUNNING. 마감 또는 간격 종료를 다시 잡는다 (5.5.7) | `lane` UPDATE(정지 컬럼 비움), 입찰 단계면 `lot.deadline_at`, 전이 이력, 감사 로그 | `LANE_RESUMED`, 새 세대로 마감 확인 또는 간격 종료 예약 |
+| `ForceClose(lotId)` | 운영자 API | 대상이 BIDDING Lot (그 밖은 [OQ-41]) | Lot UNSOLD(`FORCE_CLOSED`). 5.5.8 | `lot` 조건부 UPDATE, 판매자 유찰 알림 행, 마지막 Lot이면 `lane` UPDATE, 감사 로그 | `LOT_CLOSED`, 필요하면 `LANE_FINISHED` |
+
+- 마감 확인 세대는 확인을 새로 예약하는 경로(재개, 6.4의 재구성)에서만 올린다. 입찰로 마감이 늘어날 때는 올리지 않는다. 원래 확인이 새 마감에 같은 세대로 다시 예약되기 때문이다 (CH-03 후보 B). 간격 세대는 간격을 새로 잡을 때마다 올린다. 낡은 세대의 명령은 다시 예약하지 않고 버리므로, 정지 전에 예약한 `EndGap`이 재개 뒤에 울려도 아무것도 바꾸지 않는다 (AC-13-4).
 
 - 명령 타입은 `sealed interface LaneCommand`, 이벤트 타입은 `sealed interface LaneEvent`다 (Java 21). `switch`가 모든 경우를 다루지 않으면 컴파일 오류가 나므로, 명령을 추가할 때 처리를 빠뜨리지 않는다.
 - 허용되지 않은 전이(예: FINISHED 레인에 재개)는 상태를 바꾸지 않고 거절로 응답한다. 운영자 API 에러 코드는 1주차 OpenAPI에서 정한다 (PRD 6.1).
@@ -842,10 +864,10 @@ stateDiagram-v2
     GAP --> FINISHED : EndGap, 다음 Lot 없음
     BIDDING --> PAUSED_BIDDING : Pause (남은 시간 저장)
     PAUSED_BIDDING --> BIDDING : Resume (T5 또는 T6)
-    PAUSED_BIDDING --> PAUSED_CLOSED : ForceClose, 마지막 Lot 아님
+    PAUSED_BIDDING --> PAUSED_GAP : ForceClose, 마지막 Lot 아님
     PAUSED_BIDDING --> FINISHED : ForceClose, 마지막 Lot
-    PAUSED_CLOSED --> GAP : Resume (간격 뒤 다음 Lot)
-    GAP --> PAUSED_GAP : Pause [OQ-10]
+    GAP --> PAUSED_GAP : Pause (남은 간격은 저장하지 않음)
+    PAUSED_GAP --> GAP : Resume (gapEndsAt = 재개 시각 + 5초, OQ-10)
     FINISHED --> [*]
 ```
 
@@ -853,23 +875,26 @@ stateDiagram-v2
 |---|---|---|---|
 | `READY` | READY | 1번 Lot이 PENDING | `LANE_NOT_RUNNING` |
 | `BIDDING` | RUNNING | BIDDING | 조건 5~9 검사 |
-| `GAP` | RUNNING | 직전 Lot이 SOLD/UNSOLD, 다음 Lot은 PENDING | `LOT_NOT_BIDDING` |
-| `PAUSED_BIDDING`, `PAUSED_CLOSED`, `PAUSED_GAP` | PAUSED | BIDDING 또는 종료됨 | `LANE_NOT_RUNNING` |
+| `GAP` | RUNNING | 직전 Lot이 SOLD/UNSOLD, 다음 Lot은 PENDING(또는 없음) | `LOT_NOT_BIDDING` |
+| `PAUSED_BIDDING` | PAUSED | BIDDING | `LANE_NOT_RUNNING` |
+| `PAUSED_GAP` | PAUSED | 직전 Lot이 SOLD/UNSOLD | `LANE_NOT_RUNNING` |
 | `FINISHED` | FINISHED | 모두 종료됨 | `LANE_NOT_RUNNING` |
 
-- `PAUSED_GAP`에서 재개하면 어떻게 되는지는 [OQ-10]이 정한다. 그때까지 전이 표의 빈칸으로 둔다 (CH-02 재현 방법: 빈칸은 PRD 질문).
-- 재시작 복구로 `PAUSED`가 된 레인이 간격 중이었을 때의 처리는 [OQ-11]이다.
+- `PAUSED_GAP`에서 재개하면 재개 시각부터 간격 5초를 처음부터 다시 준다 (OQ-10). 정지 중에 강제 종료한 레인도 `PAUSED_GAP`이 되므로 같은 규칙이고(AC-14-3), 간격 중에 재시작된 레인도 같다 (OQ-11 일부). 그래서 0.1의 `PAUSED_CLOSED` 단계가 없어졌다.
+- DB에서는 `BIDDING` Lot이 있는지로 `PAUSED_BIDDING`과 `PAUSED_GAP`을 가른다. 단계 컬럼은 두지 않는다 (4.4).
 
 **`LaneState`가 가진 값**
 
 | 묶음 | 값 |
 |---|---|
 | 계획 | `LotPlan` 목록(lotId, 판매자 ID, 시작가, 최저 낙찰가, 이름, 대표 이미지 키), 현재 위치 |
-| 현재 Lot | 현재가, 최고 입찰자 ID, 마스킹 닉네임, 입찰 수, 마감 시각 |
-| 정지 | 저장한 남은 시간, 정지 원인(레인 / 회차 일괄 / 복구. [OQ-13]이 어느 쪽으로 정해지든 구분할 수 있게), 복구로 정지됐는지(T6 적용 여부) |
-| 간격 | 직전 Lot이 끝난 시각 |
+| 현재 Lot | 현재가, 최고 입찰자 ID, 마스킹 닉네임, 입찰 수, 마지막 입찰 ID, 마감 시각 |
+| 정지 | 저장한 남은 시간(입찰 단계일 때), 정지 원인(운영자 / 회차 일괄 / 복구). 원인이 복구이면 재개에 T6를 쓴다. [OQ-13]이 어느 쪽으로 정해지든 원인으로 구분할 수 있다 |
+| 간격 | 간격 종료 시각 `gapEndsAt` |
+| 타이머 | 마감 확인 세대, 간격 세대 (5.3) |
+| 처리 시각 | 직전 처리 시각 (R13) |
 | 회차 값 | 시간 파라미터 4개, 고정된 `BidIncrementPolicy` |
-| 발행 | `seq` (epoch는 프로세스 공통) |
+| 발행 | `seq`, 마지막 비컨 시각 (epoch는 프로세스 공통) |
 
 ### 5.5 동작 흐름
 
@@ -878,10 +903,11 @@ stateDiagram-v2
 회차 시작은 모든 레인을 한꺼번에 바꾸므로 어느 레인 큐에도 속하지 않는다 (CH-02).
 
 1. 자동 시작 타이머(5.7)와 운영자의 "지금 시작"은 모두 `SessionStarter.start(sessionId, trigger)` 하나로 들어온다.
-2. `t0 = clock.instant()`를 한 번 읽는다. 최신 정책 버전 ID를 읽는다.
-3. 트랜잭션 TX-S (잠정안, CH-02 후보 B1):
+2. 트랜잭션 TX-S를 열고 회차 행을 먼저 잠근 뒤 `t0 = clock.instant()`를 한 번 읽는다. 최신 정책 버전 ID를 읽는다. 편성 변경이 회차 행을 쥐고 있으면 그 커밋을 기다린 다음에 `t0`를 정하므로, 기다린 시간만큼 첫 Lot의 대기 시간이 줄어든 채 시작하지 않는다.
+3. TX-S의 나머지 (잠정안, CH-02 후보 B1):
 
    ```sql
+   SELECT id FROM auction_session WHERE id = :sessionId FOR UPDATE;   -- 편성 변경과 줄을 선 뒤 t0를 읽는다
    UPDATE auction_session
       SET status = 'RUNNING', started_at = :t0, bid_policy_id = :latestPolicyId, updated_at = :t0
     WHERE id = :sessionId
@@ -918,16 +944,16 @@ stateDiagram-v2
 6장에서 단계별로 다룬다. 엔진 쪽 요점만 적는다.
 
 - 수락하면 `마감 = max(지금 마감, 처리 시각 + 10초)` (T2, OQ-08). 마감은 앞당겨지지 않는다.
-- 잠정안 타이머(CH-03 후보 B)에서는 마감이 늘어나도 기존 타이머를 취소하지 않는다. 원래 시각에 울린 확인 이벤트가 "아직 마감 전"을 보고 새 마감 시각에 다시 예약한다.
+- 잠정안 타이머(CH-03 후보 B)에서는 마감이 늘어나도 기존 타이머를 취소하지 않는다. 원래 시각에 울린 확인 이벤트가 "아직 마감 전"을 보고 새 마감 시각에 같은 세대로 다시 예약한다. 마감 확인 세대는 올리지 않는다 (5.3).
 
 #### 5.5.4 마감 확인과 마감 판정
 
 잠정안 (CH-03 후보 B): **타이머는 언제 확인할지만 정하고, 마감되었는지는 큐가 처리하는 순간의 시각으로 판단한다** (C3).
 
-`CheckDeadline(lotId)`를 처리할 때:
+`CheckDeadline(lotId, gen)`을 처리할 때:
 
-1. 레인이 입찰 단계가 아니거나 `lotId`가 현재 Lot이 아니면 무시한다 (낡은 확인. 정지 중이면 여기서 끝난다).
-2. 처리 시각 < 마감 시각이면 새 마감 시각에 다시 예약하고 끝낸다 (입찰로 연장된 경우).
+1. 레인이 입찰 단계가 아니거나, `lotId`가 현재 Lot이 아니거나, `gen`이 현재 마감 확인 세대가 아니면 무시한다 (낡은 확인. 정지 중이면 여기서 끝난다).
+2. 처리 시각 < 마감 시각이면 새 마감 시각에 같은 세대로 다시 예약하고 끝낸다 (입찰로 연장된 경우).
 3. 처리 시각 ≥ 마감 시각이면 판정한다.
 
    | 조건 | 결과 |
@@ -936,16 +962,17 @@ stateDiagram-v2
    | 현재가 ≥ 최저 낙찰가 | `SOLD` |
    | 그 밖 | `UNSOLD` (`RESERVE_NOT_MET`) |
 
-4. 트랜잭션 TX-C: `UPDATE lot SET status = ?, closed_at = :now, unsold_reason = ? WHERE id = :lotId AND status = 'BIDDING'`. SOLD면 같은 트랜잭션에서 `INSERT INTO trade (...)`(결제 대기). 마감과 거래 생성이 한 트랜잭션이라 "거래 없는 SOLD"가 DB에 남지 않는다 (CH-09 시나리오 1). `trade.lot_id` 유니크가 중복 낙찰(AC-10-6)의 마지막 방어선이다.
-5. 커밋 뒤: 간격 단계로 바꾸고, `LOT_CLOSED`를 발행하고, 알림(낙찰자에게 "낙찰", 유찰이면 판매자에게 "유찰")을 넘기고, `종료 시각 + 5초`에 `EndGap`을 예약한다.
+4. 트랜잭션 TX-C: `UPDATE lot SET status = ?, closed_at = :now, unsold_reason = ? WHERE id = :lotId AND status = 'BIDDING' AND bid_count = :expectedCount`. 영향받은 행이 1이 아니면 롤백하고 6.4로 간다 (6.3). SOLD면 같은 트랜잭션에서 `INSERT INTO trade (...)`(결제 대기). 마감과 거래 생성이 한 트랜잭션이라 "거래 없는 SOLD"가 DB에 남지 않는다 (CH-09 시나리오 1). `trade.lot_id` 유니크가 중복 낙찰(AC-10-6)의 마지막 방어선이다. 낙찰자에게 WON, 유찰이면 판매자에게 LOT_UNSOLD 알림 행도 같은 트랜잭션에 넣는다 (결정됨 (리뷰), 6.3).
+5. 커밋 뒤: 간격 단계로 바꾸고 `gapEndsAt = 종료 시각 + 5초`로 잡고, `LOT_CLOSED`를 발행하고, 알림을 개인 큐로 보내고(행은 이미 커밋됨), 새 간격 세대로 `gapEndsAt`에 `EndGap`을 예약한다.
 
-**마감 선적용** (잠정안): 어떤 명령이든 처리하기 전에, 처리 시각이 이미 마감 시각을 지났는데 Lot이 아직 BIDDING이면 3~5의 마감 판정부터 한다. 입찰에는 C3가 이미 이렇게 정했다 (마감 뒤의 입찰은 `LOT_NOT_BIDDING`). 운영자 명령(정지, 강제 종료)에도 같은 규칙을 적용하면 타이머 지연이 결과를 바꾸지 않고, INV-4 재계산과 엔진의 판정이 갈리지 않는다. PRD에 명시가 없어 부록 B에 올렸다.
+**마감 선적용** (잠정안): 레인이 `RUNNING`이면, 어떤 명령이든 처리하기 전에 처리 시각이 이미 마감 시각을 지났는데 Lot이 아직 BIDDING인지 본다. 그렇다면 3~5의 마감 판정부터 한다. `PAUSED` 레인에는 적용하지 않는다. 정지 중에는 마감이 멈춰 있고(남은 시간으로 저장, T5) 메모리의 마감 시각은 정지 전 값이라, 적용하면 1초마다 오는 `Tick`이나 재개 명령이 정지된 Lot을 마감해 버린다 (E7). 입찰에는 C3가 이미 이렇게 정했다 (마감 뒤의 입찰은 `LOT_NOT_BIDDING`). 운영자 명령(정지, 강제 종료)에도 같은 규칙을 적용하면 타이머 지연이 결과를 바꾸지 않고, INV-4 재계산과 엔진의 판정이 갈리지 않는다. PRD에 명시가 없어 부록 B에 올렸다.
 
 #### 5.5.5 간격과 다음 Lot, 레인 종료
 
-`EndGap(lotId)`를 처리할 때:
+`EndGap(lotId, gen)`을 처리할 때:
 
-- 레인이 RUNNING이 아니면(간격 중 정지) 무시한다. 재개 뒤의 간격 처리는 [OQ-10].
+- 레인이 RUNNING이 아니거나(간격 중 정지), `gen`이 현재 간격 세대가 아니거나, 처리 시각 < `gapEndsAt`이면 무시한다. 간격 종료는 Lot 종료 시각이 아니라 `gapEndsAt`으로 판정한다. Lot 종료 시각 + 5초로 판정하면, 간격 중에 정지했다 재개한 직후에도 조건이 참이 되어 OQ-10(재개하면 5초를 다시 준다)을 지키지 못한다.
+- `Tick`이 간격 종료가 지난 것을 보면 `EndGap`과 같이 처리한다 (5.8).
 - 다음 Lot이 있으면 5.5.2로 연다.
 - 다음 Lot이 없으면 레인을 끝낸다. 트랜잭션 TX-F: 레인 `FINISHED` + 전이 이력(`LAST_LOT_DONE`) + 회차 종료 집계(5.5.6). 커밋 뒤 `LANE_FINISHED` 발행, 레인 자원 정리 (5.2).
 
@@ -957,7 +984,8 @@ stateDiagram-v2
 
 ```sql
 SELECT id FROM auction_session WHERE id = :sessionId FOR UPDATE;   -- 레인 종료끼리 여기서 줄을 선다
-UPDATE lane SET status = 'FINISHED', finished_at = :now, updated_at = :now
+UPDATE lane SET status = 'FINISHED', paused_remaining_ms = NULL, pause_cause = NULL,
+                finished_at = :now, updated_at = :now
  WHERE id = :laneId AND status IN ('RUNNING', 'PAUSED');
 INSERT INTO lane_transition (...);
 UPDATE auction_session SET status = 'FINISHED', finished_at = :now, updated_at = :now
@@ -972,16 +1000,17 @@ COMMIT;
 
 #### 5.5.7 정지와 재개
 
-- **정지** (`Pause`): 처리 시각 `tp`에 `남은 시간 = 마감 − tp`를 저장한다 (T5). 트랜잭션: `lane` PAUSED, 전이 이력(`remaining_ms`, 원인), 감사 로그. 커밋 뒤 `LANE_PAUSED` 발행. 이미 예약된 확인 이벤트는 정지 상태를 보고 무시된다 (5.5.4의 1).
-- **재개** (`Resume`): 처리 시각 `tr`에 마감을 다시 잡는다.
+- **정지** (`Pause`): 입찰 단계면 처리 시각 `tp`에 `남은 시간 = 마감 − tp`를 저장한다 (T5). 간격 단계면 남은 간격을 저장하지 않는다. 재개하면 간격을 처음부터 다시 주기 때문이다 (OQ-10). 트랜잭션: `lane` PAUSED와 `paused_remaining_ms`·`pause_cause`, 전이 이력(`remaining_ms`, 원인), 감사 로그. 커밋 뒤 `LANE_PAUSED` 발행. 이미 예약된 확인과 간격 종료는 정지 상태를 보고 무시되고(5.5.4의 1, 5.5.5), 재개 때 새 세대로 다시 예약되므로 낡은 것은 재개 뒤에 울려도 버려진다.
+- **재개** (`Resume`): 처리 시각 `tr`에 마감이나 간격 종료를 다시 잡는다.
 
-  | 상황 | 새 마감 | 근거 |
+  | 상황 | 새 마감 또는 간격 종료 | 근거 |
   |---|---|---|
-  | 운영자 정지 뒤 재개 | `tr + max(남은 시간, 10초)` | T5, AC-13-1·2 |
-  | 재시작 복구 뒤 재개 | `tr + 10초` | T6, AC-17-2. 입찰 0건 Lot과 간격 중이던 레인은 [OQ-11] |
-  | 정지 중 강제 종료 뒤 재개 | 간격(5초) 뒤 다음 Lot | AC-14-3 |
+  | 입찰 단계, 운영자·회차 일괄 정지 뒤 재개 | 마감 = `tr + max(남은 시간, 10초)` | T5, AC-13-1·2 |
+  | 입찰 단계, 재시작 전에 운영자가 정지해 둔 레인 | 위와 같다. 저장된 남은 시간을 쓴다 | OQ-43, AC-17-4 |
+  | 입찰 단계, 재시작 복구 정지(원인 `RECOVERY`) 뒤 재개 | 마감 = `tr + 10초` | T6, AC-17-2. 입찰 0건 Lot은 [OQ-11] |
+  | 간격 단계 (간격 중 정지, 정지 중 강제 종료, 간격 중 재시작) | `gapEndsAt = tr + 5초` | OQ-10, AC-13-4, AC-14-3, OQ-11 일부 |
 
-  트랜잭션: `lane` RUNNING, `lot.deadline_at`, 전이 이력, 감사 로그. 커밋 뒤 `LANE_RESUMED` 발행, 새 마감에 확인 예약.
+  트랜잭션: `lane` RUNNING(정지 컬럼 비움), 입찰 단계면 `lot.deadline_at`, 전이 이력, 감사 로그. 커밋 뒤 `LANE_RESUMED` 발행, 새 세대로 마감 확인 또는 `EndGap` 예약.
 - **회차 일괄 정지·재개**: 서비스가 대상 레인(정지: RUNNING, 재개: PAUSED)마다 같은 명령을 각 레인 큐에 넣는다. 레인마다 남은 시간을 따로 저장하고 복원한다 (T7, AC-13-3). 개별로 정지해 둔 레인을 일괄 재개에 포함할지는 [OQ-13]이다. 정지 원인을 저장해 두므로 어느 쪽으로 정해져도 구현할 수 있다.
 
 #### 5.5.8 강제 종료
@@ -989,27 +1018,30 @@ COMMIT;
 | 레인 상태 | 결과 | 근거 |
 |---|---|---|
 | RUNNING (입찰 단계) | Lot UNSOLD(`FORCE_CLOSED`). 거래는 생기지 않는다. 다음 Lot이 간격 뒤 자동으로 시작하는지는 [OQ-06] | AC-14-1, AC-14-5 |
-| PAUSED, 마지막 Lot이 아님 | Lot UNSOLD. 레인은 PAUSED를 유지. 재개하면 간격 뒤 다음 Lot | AC-14-3 |
+| PAUSED, 마지막 Lot이 아님 | Lot UNSOLD. 레인은 PAUSED를 유지하고 `PAUSED_GAP`이 된다. 재개하면 재개 시각 + 5초에 다음 Lot | AC-14-3, OQ-10 |
 | PAUSED, 마지막 Lot | Lot UNSOLD. 레인은 바로 FINISHED (`FORCE_CLOSE_LAST`, 5.5.6의 집계 포함) | AC-14-4 |
 | 간격 중, 또는 대상이 PENDING Lot | [OQ-41] | |
 
+- 강제 종료 트랜잭션에는 판매자에게 보내는 LOT_UNSOLD 알림 행이 함께 들어간다 (5.5.4의 4와 같다). PAUSED 레인에서 강제 종료하면 레인이 간격 단계가 되므로 `lane.paused_remaining_ms`를 비운다.
 - 강제 종료 명령도 같은 큐에 들어가므로, 먼저 들어간 강제 종료 뒤의 입찰은 거절된다 (AC-14-2).
-- 마감 시각이 이미 지난 Lot에 강제 종료가 처리되면 마감 선적용(5.5.4)이 먼저 적용되어 시간 마감 결과가 남는다. PRD에 명시가 없어 부록 B에 올렸다.
+- `RUNNING` 레인에서 마감 시각이 이미 지난 Lot에 강제 종료가 처리되면 마감 선적용(5.5.4)이 먼저 적용되어 시간 마감 결과가 남는다. PRD에 명시가 없어 부록 B에 올렸다. `PAUSED` 레인은 마감이 멈춰 있으므로 강제 종료가 그대로 적용된다.
 
 #### 5.5.9 재시작 복구
 
 부팅할 때 웹 서버가 요청을 받기 전에 아래 순서로 실행한다 (제안).
 
+0. **단일 인스턴스 가드** (결정됨 (리뷰)): 전용 DB 연결로 `SELECT GET_LOCK('fourlane-engine', 0)`을 실행한다. 1이 아니면 다른 인스턴스가 이미 엔진을 돌리고 있으므로, 엔진과 웹 서버를 시작하지 않고 기동을 실패시킨다. 이 연결은 프로세스가 끝날 때까지 쥐고 있는다. 연결이 끊기면 락도 풀리므로, 끊김을 감지하면 health를 DOWN으로 하고 락을 다시 잡는다. 다시 잡지 못하면 프로세스를 내린다 (crash-only). 이 가드가 없으면 두 번째 인스턴스의 2단계가 첫 인스턴스가 처리 중인 레인을 `PAUSED`로 바꾸고, 첫 인스턴스는 그 사실을 모른 채 입찰을 계속 커밋한다 (CHALLENGES CH-09 시나리오 7).
 1. 새 `epoch`를 만든다 (7.4).
-2. 트랜잭션: `RUNNING`인 레인을 모두 `PAUSED`로 바꾸고 전이 이력(`RECOVERY`)을 남긴다.
-3. 진행 중인 회차의 레인마다 DB에서 상태를 읽는다: 레인 상태, Lot 계획(순번, 판매자, 가격, 이름, 대표 이미지), 현재 BIDDING Lot과 그 Lot의 `current_price`, `highest_bidder_id`(닉네임 포함), `bid_count`. BIDDING Lot이 없으면 간격 중이던 레인이다 [OQ-11].
-4. `LaneRuntime`을 PAUSED 상태로 만든다. **타이머는 예약하지 않는다.** 꺼져 있는 동안 지나간 마감 때문에 부팅하자마자 모든 Lot이 마감되는 일을 막는다 (CH-09 시나리오 3).
+2. 트랜잭션: `RUNNING`인 레인을 모두 `PAUSED`로 바꾸고 `pause_cause = 'RECOVERY'`, `paused_remaining_ms = NULL`로 둔 뒤 전이 이력(`RECOVERY`)을 남긴다. 이미 `PAUSED`인 레인은 건드리지 않는다. 운영자가 정지해 둔 레인의 원인과 남은 시간이 그대로 남아, 재개하면 T5를 따른다 (OQ-43).
+3. 진행 중인 회차의 레인마다 DB에서 상태를 읽는다: 레인 상태와 정지 컬럼, Lot 계획(순번, 판매자, 가격, 이름, 대표 이미지), 현재 BIDDING Lot과 그 Lot의 `current_price`, `highest_bidder_id`(닉네임 포함), `bid_count`, `last_bid_id`. BIDDING Lot이 없으면 간격 단계(`PAUSED_GAP`)다. 재개하면 간격 5초를 다시 준다 (OQ-11 일부).
+4. `LaneRuntime`을 PAUSED 상태로 만든다. **마감 확인과 간격 종료는 예약하지 않는다.** 꺼져 있는 동안 지나간 마감 때문에 부팅하자마자 모든 Lot이 마감되는 일을 막는다 (CH-09 시나리오 3). `Tick`은 시작한다. PAUSED 레인에서는 상태를 바꾸지 않고 비컨만 보낸다.
 5. 레인마다 `seq`는 0에서 시작한다. 복구 정지는 발행하지 않는다. epoch가 바뀌었으므로 클라이언트는 스냅샷부터 다시 받는다 (AC-11-5).
 6. 자동 시작 타이머를 등록한다. 예정 시각이 이미 지난 회차는 등록하지 않는다 (AC-06-4, 5.7).
 7. 결제 기한 만료 작업을 한 번 바로 돌린다. 꺼져 있는 동안 지난 기한은 반드시 처리해야 한다 (CH-09 시나리오 5). "놓친 시각"이라도 회차 시작은 따라잡지 않고 결제 만료는 따라잡는다.
 
-- 모든 전이가 트랜잭션 1개라서, 복구가 처리해야 할 "반쯤 된 상태"(거래 없는 SOLD, 일부 레인만 RUNNING인 회차)가 생기지 않는다. 복구는 "RUNNING을 PAUSED로 바꾸고 읽는다"뿐이다 (CH-09 후보 A, 잠정안).
-- 정상 종료 때도 같은 경로를 쓸지(crash-only), 큐를 비우는 경로를 따로 둘지는 CH-09에서 정한다.
+- 모든 전이가 트랜잭션 1개라서, 복구가 처리해야 할 "반쯤 된 상태"(거래 없는 SOLD, 일부 레인만 RUNNING인 회차)가 생기지 않는다. 복구는 "RUNNING을 PAUSED로 바꾸고 읽는다"뿐이다 (CH-09 후보 A + 정지 컬럼 2개).
+- **종료 방식은 crash-only다** (결정됨 (리뷰)). 정상 종료(SIGTERM)도 레인 큐를 비우지 않고 끝내고, 다음 부팅이 위 경로로 복구한다. 배포할 때마다 복구 경로가 실행되어 늘 검증되고, 종료 코드가 따로 없다. 진행 중이던 입찰은 응답을 받지 못한 입찰이 되어 같은 키 재전송이나 스냅샷으로 결과를 확인한다 (7.6).
+- 배포는 stop → start 순서다 (1.4). 겹쳐 띄우면 0단계에서 새 인스턴스가 기동하지 못한다.
 
 ### 5.6 엔진 불변식
 
@@ -1021,10 +1053,12 @@ CH-02의 무작위 이벤트 시퀀스 테스트와 CH-03의 시간 테스트가
 | E2 | 마감은 앞당겨지지 않는다. PAUSED 동안은 바뀌지 않는다 |
 | E3 | 수락된 입찰의 처리 시각은 그 직전의 마감 시각보다 앞선다 (INV-4) |
 | E4 | 메모리 상태는 커밋이 성공한 뒤에만 바뀐다 |
-| E5 | `seq`는 이벤트를 발행할 때마다 정확히 1 증가한다. 거절은 `seq`를 바꾸지 않는다 |
+| E5 | `seq`는 상태 이벤트를 발행할 때마다 정확히 1 증가한다. 거절과 비컨은 `seq`를 바꾸지 않는다 |
 | E6 | Lot마다 SOLD는 한 번, 거래는 1건이다 |
-| E7 | PAUSED 레인에서는 타이머가 상태를 바꾸지 않는다 |
+| E7 | PAUSED 레인에서는 타이머와 `Tick`이 상태를 바꾸지 않는다 |
 | E8 | FINISHED 레인의 Lot은 모두 SOLD 또는 UNSOLD다 |
+| E9 | 레인의 처리 시각은 뒤로 가지 않는다 (R13) |
+| E10 | 낡은 세대의 타이머 명령은 상태를 바꾸지 않는다. 다음 Lot은 `gapEndsAt` 전에 시작되지 않는다 |
 
 ### 5.7 회차 자동 시작
 
@@ -1034,6 +1068,29 @@ CH-02의 무작위 이벤트 시퀀스 테스트와 CH-03의 시간 테스트가
   - 예정 시각을 바꾸면(AC-04-4) 그 회차의 세대 번호를 올리고 새 시각에 다시 등록한다. 낡은 타이머는 세대가 맞지 않아 무시된다. CH-03 후보 B와 같은 원리다.
   - 타이머가 울리면 `SessionStarter.start(id, AUTO)`를 부른다. 실제로 시작할지는 5.5.1의 조건부 갱신이 정한다. 그래서 수동 시작과 겹쳐도 한 번만 시작한다.
 - 타이머는 단조 시계로 기다리고 판단은 `Clock`으로 하므로, 서버 시계가 점프하면 둘이 어긋난다 [OQ-35].
+
+### 5.8 레인 스레드 장애 대응
+
+단일 작성자 모델에서는 레인 스레드 하나가 멈추거나 죽으면 레인 하나가 아무 신호 없이 멈춘다. 정지·강제 종료 명령도 같은 큐 뒤에 있으므로 운영자도 그 레인을 멈출 수 없다 (CHALLENGES CH-05 시나리오 5). 아래는 어느 후보를 고르든 넣는다 (결정됨 (리뷰)).
+
+**시간 제한.** DB가 응답하지 않아도 레인 스레드가 정해진 시간 안에 돌아오게 한다. 값은 측정으로 정한다.
+
+| 대상 | 설정 | 기본값이면 |
+|---|---|---|
+| 트랜잭션 | `TransactionTemplate` 타임아웃 | 무제한 |
+| 소켓 | Connector/J `socketTimeout` | 무제한 |
+| 락 대기 | 레인 트랜잭션의 `innodb_lock_wait_timeout` (제안: 수 초) | 50초 |
+| 연결 획득 | Hikari `connectionTimeout` | 30초 |
+
+시간 제한에 걸린 실패는 6.4의 커밋 실패와 같이 처리한다.
+
+**예외 격리.** 레인 루프는 `Throwable`을 잡고 죽지 않는다. 판단·영속화 단계의 실패는 6.4로 간다. 커밋 뒤 단계(응답, 발행, 타이머 예약, 알림 넘김)의 실패는 상태를 되돌리지 않고 기록한 뒤 다음 명령으로 간다 (5.1).
+
+**`Tick` 안전망.** 타이머 스레드가 레인마다 1초 주기(제안)로 `Tick`을 큐에 넣는다. `RUNNING` 레인에서 `Tick`을 처리할 때 마감 선적용(5.5.4)이 일어나고, 간격 종료가 지났으면 `EndGap`과 같이 처리한다. `PAUSED` 레인에서는 상태를 바꾸지 않는다. 타이머 예약이 실패하거나 타이머가 사라져도 Lot은 최대 1초 늦게 닫힌다. 마감 정밀도를 이 주기에 맡기지는 않는다. 주 경로는 여전히 `CheckDeadline`·`EndGap`이다 (CH-03). `Tick`은 비컨 주기가 될 때마다 `HEARTBEAT`도 발행한다 (7.4). `RUNNING`·`PAUSED` 레인에만 넣고, FINISHED 레인은 런타임을 정리하므로 넣지 않는다.
+
+**생존 지표.** `Tick`이 1초마다 들어가므로 정상 레인은 1초마다 명령을 처리한다. 레인별 "마지막으로 명령을 처리한 뒤 지난 시간"과 "큐 맨 앞 명령의 대기 시간"을 게이지로 내고(6.7), (제안) 5초를 넘으면 health indicator가 그 레인을 멈춘 것으로 보고한다.
+
+**멈춘 레인의 처리.** 자동으로 정지할지는 [OQ-32]다. 시간 제한을 넣은 뒤 CH-05의 레인 스레드 정지 테스트로 실제 동작을 보고 4주차에 정한다. 그 전까지는 지표와 health로 드러내고, 운영자가 서버를 재시작한다. 재시작하면 5.5.9로 `PAUSED` 복구된다.
 
 ---
 
@@ -1057,7 +1114,7 @@ sequenceDiagram
     H->>DB: 조건 3 입찰 정지 확인 (회원 행 PK 조회, 읽기)
     H->>H: 조건 4 본인 출품 확인 (레인 Lot 계획, 메모리)
     H->>L: 큐 투입 (대기 입찰 수가 상한 이상이면 503)
-    Note over L: now = clock.instant()<br/>마감 선적용, 조건 5~9 (메모리)
+    Note over L: now = max(clock.instant(), 직전 now)<br/>마감 선적용, 조건 5~9 (메모리)
     alt 거절
         L-->>H: 거절 사유
         H-->>C: 409 / 422 / 400 (epoch·seq 포함)
@@ -1065,12 +1122,12 @@ sequenceDiagram
         rect rgb(232, 240, 255)
             Note over L,DB: TX-1 (레인 스레드, 트랜잭션 1개)
             L->>DB: INSERT bid
-            L->>DB: UPDATE lot (현재가, 최고 입찰자, 입찰 수, 마감)
+            L->>DB: UPDATE lot (현재가, 최고 입찰자, 입찰 수, 마지막 입찰, 마감)<br/>WHERE status·bid_count 조건, 영향 행 1 확인
             L->>DB: INSERT idempotency_record (성공 응답)
             L->>DB: COMMIT
         end
-        Note over L: 메모리 반영, seq + 1, 불변 뷰 교체
-        L-->>H: 성공 (seq 포함)
+        Note over L: committedAt 읽기, 메모리 반영, seq + 1, 불변 뷰 교체
+        L-->>H: 성공 (bidId, epoch, seq 포함)
         H-->>C: 200
         L->>BR: BID_ACCEPTED (seq)
         BR-->>C: /topic/lanes/{laneId} 구독자 전원
@@ -1090,14 +1147,14 @@ sequenceDiagram
 | 1 | HTTP (Security 필터) | Access Token 검증(서명, 만료는 주입된 `Clock` 기준), 역할이 `USER`인지 | `401 UNAUTHENTICATED`, `403 FORBIDDEN` | 없음 |
 | — | HTTP | 형식 검증 (필수값, 키 길이·문자) | `400 INVALID_REQUEST` | 없음 |
 | — | HTTP | `laneId`로 레지스트리에서 `LaneRuntime`을 찾는다. 없으면 DB에서 레인이 있는지만 확인한다 | `404 LANE_NOT_FOUND` | 레지스트리에 없을 때만 읽기 |
-| 2 | HTTP | 멱등 확인 (6.6). 진행 중인 같은 키가 있으면 그 결과를 기다려 같은 응답을 준다. 맵에 없으면 DB의 성공 기록을 조회해 있으면 재생한다. 본문 해시가 다르면 거절한다 | `422 IDEMPOTENCY_KEY_REUSED` | 읽기 1회 |
-| 3 | HTTP | 입찰 정지 여부. 같은 조회로 닉네임도 얻는다 (수락되면 마스킹해 발행한다) | `403 BIDDER_SUSPENDED` | 읽기 1회 |
+| 2 | HTTP | 멱등 확인 (6.6). 진행 중인 같은 키가 있으면 본문 해시가 같을 때만 그 결과에 합류해 같은 응답을 준다. 맵에 없으면 DB의 성공 기록을 조회해 있으면 재생한다. 본문 해시가 다르면 거절한다 | `422 IDEMPOTENCY_KEY_REUSED` | 읽기 1회 |
+| 3 | HTTP | 입찰 정지 여부. 같은 조회로 닉네임도 얻는다 (수락되면 마스킹해 발행한다). 큐 밖에서 읽으므로, 정지가 걸린 직후에도 이미 이 검사를 통과한 입찰은 수락될 수 있다. 정지 순간의 처리는 [OQ-26] | `403 BIDDER_SUSPENDED` | 읽기 1회 |
 | 4 | HTTP | 요청한 `lotId`의 판매자가 요청자인지. 레인의 Lot 계획(메모리, 시작 뒤 불변)에서 본다. 계획에 없는 `lotId`면 여기서는 통과하고 6에서 거절된다 | `403 SELF_BID_FORBIDDEN` | 레인이 실행 중이 아닐 때만 읽기 |
 | 4와 5 사이 | HTTP | 레인 큐 투입. 대기 입찰 수 ≥ 상한이면 넣지 않는다. 멱등 진행 중 맵에서 키를 지운다 (기록하지 않음) | `503 LANE_OVERLOADED` | 없음 |
 | 5~9 | 레인 | 처리 시각을 정하고 마감 선적용(5.5.4) 뒤 PRD 6.3 순서대로 검사한다 | `422 LANE_NOT_RUNNING`, `422 LOT_NOT_BIDDING`, `409 LOT_MISMATCH`, `409 PRICE_CHANGED`, `400 INVALID_BID_AMOUNT`, `409 ALREADY_HIGHEST_BIDDER` | 없음 |
-| 수락 | 레인 | 새 상태 계산: 현재가 = `amount`, 최고 입찰자, 입찰 수 + 1, 마감 = max(마감, 처리 시각 + 10초) | — | TX-1 |
+| 수락 | 레인 | 새 상태 계산: 현재가 = `amount`, 최고 입찰자, 입찰 수 + 1, 마지막 입찰 ID, 마감 = max(마감, 처리 시각 + 10초) | — | TX-1 |
 | 커밋 뒤 | 레인 | 메모리 반영 → `seq` + 1 → 뷰 교체 → 응답 완료 → 발행 → 알림 넘김 | — | 없음 |
-| 응답 | HTTP | 결과를 받아 응답한다. 거절 결과는 멱등 진행 중 맵에 짧게 남긴다 (6.6) | — | 없음 |
+| 응답 | HTTP | 결과를 기다려 응답한다. 대기 상한(값은 측정, 클라이언트 시간 제한보다 짧게)을 넘으면 `500 BID_RESULT_UNKNOWN`으로 응답하되 진행 중 맵 항목은 남긴다 (6.6). 거절 결과는 멱등 진행 중 맵에 짧게 남긴다 | `500 BID_RESULT_UNKNOWN` | 없음 |
 
 - PRD 6.3 표에서 `INVALID_REQUEST`와 `LANE_NOT_FOUND`의 순서는 "—"(정하지 않음)다. Spring Security 필터가 컨트롤러보다 먼저 돌기 때문에 실제 순서는 "1 → 형식(400) → 레인 존재(404) → 2"가 된다. 이 순서로 계약에 적는다 (제안).
 - 레인 상태와 관련된 조건(5~9)은 모두 메모리에서 검사한다. **409와 422 거절은 레인 큐 안에서 DB를 거치지 않는다** (CH-04 후보 C의 장점).
@@ -1107,26 +1164,29 @@ sequenceDiagram
 | 경계 | 위치 | 내용 | 규칙 |
 |---|---|---|---|
 | 큐 밖 | HTTP 스레드 | 읽기 전용 점 조회 2회(멱등 성공 기록, 회원). 트랜잭션을 열지 않는다 | `spring.jpa.open-in-view=false`. 이 설정이 켜져 있으면 HTTP 스레드가 레인 결과를 기다리는 동안 DB 연결을 쥐고 있을 수 있다 |
-| TX-1 | 레인 스레드 | `bid` INSERT + `lot` UPDATE + `idempotency_record` INSERT, 커밋 | `@Transactional` 프록시가 아니라 `TransactionTemplate`으로 연다. 스레드를 넘나드는 경계가 코드에 그대로 보인다. 같은 Lot 행을 다투는 트랜잭션은 없다(단일 작성자, 운영자 명령도 같은 큐) |
+| TX-1 | 레인 스레드 | `bid` INSERT + `lot` 조건부 UPDATE + `idempotency_record` INSERT, 커밋 | `@Transactional` 프록시가 아니라 `TransactionTemplate`으로 연다. 스레드를 넘나드는 경계가 코드에 그대로 보인다. 같은 Lot 행을 다투는 트랜잭션은 없다(단일 작성자, 운영자 명령도 같은 큐) |
 | 커밋 뒤 | 레인 스레드 | 메모리 반영, 응답, 발행, 타이머 예약 | 트랜잭션 밖이다. 성공 응답은 커밋 뒤에만 나간다 (B3, AC-09-10) |
-| TX-2 | 알림 실행기 | `notification` INSERT, 개인 큐 전송 | 잠정안 (CH-05 (다)): 입찰과 다른 트랜잭션이다. 알림이 실패해도 입찰 결과에는 영향이 없다. 커밋 직후 서버가 죽으면 알림이 사라질 수 있다. 알림은 Should 기능이고, 얼마나 유실해도 되는지는 아직 정하지 않았다 |
+| TX-2 | 알림 실행기 | OUTBID `notification` INSERT, 개인 큐 전송 | 잠정안 (CH-05 (다)): 입찰마다 생기는 OUTBID만 입찰과 다른 트랜잭션이다. 알림이 실패해도 입찰 결과에는 영향이 없다. 커밋 직후 서버가 죽으면 OUTBID 알림이 사라질 수 있다. 얼마나 유실해도 되는지는 아직 정하지 않았다 |
+| 마감 트랜잭션의 알림 | 레인 스레드 (TX-C, 강제 종료) | WON·LOT_UNSOLD `notification` INSERT | 결정됨 (리뷰). Lot당 1행이라 마감 트랜잭션에 함께 써도 비용이 없고, 알림함이 마감 결과와 언제나 맞는다. 개인 큐 전송만 커밋 뒤에 한다 |
 
+- **조건부 레인 쓰기** (결정됨 (리뷰)). TX-1과 TX-C의 `lot` UPDATE는 `WHERE id = :lotId AND status = 'BIDDING' AND bid_count = :expectedCount`로 쓰고, 영향받은 행이 1이 아니면 롤백한 뒤 6.4로 간다. 단일 작성자에서는 언제나 1이라 비용이 없다(PK 갱신). 0이 되는 것은 메모리가 DB와 어긋났을 때뿐이다. 예를 들어 결과를 모르는 커밋 뒤의 재구성이 늦게 커밋된 트랜잭션을 못 봤거나, 인스턴스가 둘 떴을 때다. `(lot_id, amount)` 유니크는 같은 금액의 이중 성공만 막지만, 이 조건은 어긋난 메모리로 마감해 엉뚱한 낙찰자로 거래가 생기는 것까지 막는다.
+- `JpaLaneStore`는 엔티티를 읽어 고치지 않고 PK 기준 UPDATE 문을 바로 쓴다(`@Modifying` JPQL 또는 JDBC). 레인은 상태를 이미 알고 있으므로 직렬 경로에 SELECT를 더할 이유가 없다.
 - 거절 경로의 DB 비용은 큐 밖의 점 조회 2회다. 이 때문에 "409는 DB를 거치지 않는다"는 장점이 그만큼 줄어든다. 실험 ①에서 함께 잰다. 줄여야 한다는 것이 측정되면 (a) 부팅할 때 최근 24시간의 성공 기록을 메모리에 올리거나 (b) 입찰 정지 상태를 메모리에 둔다. 둘 다 서버 1대를 전제로 하므로 측정으로 필요가 확인될 때만 한다.
 - DB 연결: 커밋하는 동안 레인 스레드마다 연결 1개, HTTP 스레드는 점 조회 동안만 연결을 쓴다. HikariCP 풀 크기는 측정으로 정한다 (CH-04 시나리오 5).
+- HTTP 점조회(초당 1,000건이면 초당 2,000쿼리)와 레인 커밋은 지금 같은 풀을 쓴다. 풀이 밀리면 레인 스레드가 연결을 기다리고 레인 처리량이 조회 부하에 묶인다. 풀 대기 지표(6.7)를 두고, 4주차 부하 테스트에서 레인 커밋이 풀을 기다리는 것이 보이면 엔진 전용 풀을 나눈다 (CH-05 풀 경합 측정). 설정만 바꾸면 되는 일이라 측정이 먼저다.
 
 ### 6.4 커밋이 실패하면
 
 잠정안 (CH-05 후보 A1):
 
-1. TX-1이 예외로 끝나면, 롤백이든 결과를 모르는 실패든 메모리는 바꾸지 않는다.
-2. 레인 스레드가 그 레인의 상태를 DB에서 다시 읽어 메모리를 재구성한다 (현재 Lot, 현재가, 최고 입찰자, 입찰 수, 마감 시각). 재구성하는 동안 뒤의 명령은 큐에서 기다린다.
-3. 요청에는 `500`으로 응답하고, 멱등 진행 중 맵에서 그 키를 지운다.
-4. 클라이언트는 이것을 "응답을 받지 못한 입찰"로 다루고 10초 안에 같은 키로 다시 보낸다 (PRD 9.4-5). 커밋이 실제로 되었다면 멱등 성공 기록도 같은 트랜잭션에 들어갔으므로 재전송은 처음 성공 응답을 받는다. 커밋이 되지 않았다면 새로 평가된다.
+1. TX-1이 예외로 끝나면(시간 제한 포함, 5.8), 롤백이든 결과를 모르는 실패든 조건부 UPDATE의 영향 행 0이든 메모리는 바꾸지 않는다.
+2. 레인 스레드가 그 레인의 상태를 DB에서 다시 읽어 메모리를 재구성한다 (현재 Lot, 현재가, 최고 입찰자, 입찰 수, 마지막 입찰 ID, 마감 시각). Lot 행은 잠금 읽기(`SELECT … FOR UPDATE`)로 읽는다. 커밋 패킷이 아직 DB에서 처리 중인 트랜잭션이 있으면 일반 읽기는 이전 값을 보지만, 잠금 읽기는 그 트랜잭션이 끝날 때까지(락 대기 상한 안에서) 기다려 한 번에 맞는 값을 읽는다. 재구성하는 동안 뒤의 명령은 큐에서 기다린다.
+3. 요청에는 `500 BID_RESULT_UNKNOWN`으로 응답하고(PRD OQ-44), 멱등 진행 중 맵에서 그 키를 지운다. 명령이 이 실패로 끝났으므로 큐에 같은 키가 남아 있지 않다.
+4. 클라이언트는 응답을 받지 못한 입찰과 같이 10초 안에 같은 키로 다시 보낸다 (PRD 9.4-5). 커밋이 실제로 되었다면 멱등 성공 기록도 같은 트랜잭션에 들어갔으므로 재전송은 처음 성공 응답을 받는다. 커밋이 되지 않았다면 새로 평가된다.
 
 - "결과를 모르는 커밋"(CH-05 시나리오 2)이 재구성과 같은 키 재전송으로 수렴한다.
-- 마감 같은 다른 전이가 실패해도 같은 방식으로 재구성하고, 확인 이벤트를 다시 예약한다.
-- 재구성 대신 레인을 자동으로 정지할지는 [OQ-32] (CH-05 후보 A2)다.
-- 입찰 API의 5xx는 PRD 6.3 표에 없다 (부록 B).
+- 마감 같은 다른 전이가 실패해도 같은 방식으로 재구성하고, 마감 확인 세대를 올려 확인 이벤트를 다시 예약한다.
+- 재구성도 실패하면(DB 무응답) 5.8의 지표와 health로 드러난다. 재구성 대신 레인을 자동으로 정지할지는 [OQ-32] (CH-05 후보 A2)다.
 
 ### 6.5 응답 형식 초안
 
@@ -1141,12 +1201,11 @@ sequenceDiagram
   "acceptedAt": "2026-10-23T11:00:03.120Z",
   "deadlineAt": "2026-10-23T11:00:13.120Z",
   "epoch": "9c41e07a5b3d2f18",
-  "seq": 58,
-  "serverTime": "2026-10-23T11:00:03.121Z"
+  "seq": 58
 }
 ```
 
-같은 키와 같은 본문으로 재전송하면 저장해 둔 이 본문을 그대로 돌려준다 (`serverTime` 포함).
+같은 키와 같은 본문으로 재전송하면 저장해 둔 이 본문을 그대로 돌려준다. 입찰 응답에는 `serverTime`이 없다 (결정됨 (리뷰), 7.7). 있으면 재생 응답이 몇 초 전 시각을 그대로 내보내 클라이언트의 시계 오차 추정을 흐린다.
 
 거절 (형식은 1주차 OpenAPI에서 확정):
 
@@ -1154,18 +1213,27 @@ sequenceDiagram
 {
   "code": "PRICE_CHANGED",
   "message": "현재가가 바뀌었습니다.",
-  "serverTime": "2026-10-23T11:00:03.125Z",
   "lane": { "epoch": "9c41e07a5b3d2f18", "seq": 59 }
 }
 ```
 
 `lane`은 레인 상태 때문에 거절된 경우(409, 그리고 422의 `LANE_NOT_RUNNING`·`LOT_NOT_BIDDING`)에만 넣는다 (2.5).
 
+결과 미정 (`500`, PRD OQ-44):
+
+```json
+{
+  "code": "BID_RESULT_UNKNOWN",
+  "message": "입찰 결과를 확인하지 못했습니다. 같은 요청을 다시 보내 주세요."
+}
+```
+
 ### 6.6 멱등 처리
 
 **잠정안** (CH-06 후보 C에 성공 기록 영속화를 더한 것):
 
-- HTTP 계층에 `(회원 ID, 키) → 처리 중인 결과(future)` 맵을 둔다. 같은 키가 동시에 오면 첫 요청만 큐로 가고, 나머지는 같은 결과를 기다린다 (PRD 조건 2: "나머지 요청은 처음 요청의 결과를 받는다").
+- HTTP 계층에 `(회원 ID, 키) → 처리 중인 결과(future)` 맵을 둔다. 같은 키가 동시에 오면 첫 요청만 큐로 가고, 나머지는 본문 해시가 같을 때만 같은 결과를 기다린다 (PRD 조건 2: "나머지 요청은 처음 요청의 결과를 받는다"). 해시가 다르면 `422 IDEMPOTENCY_KEY_REUSED`다.
+- **항목의 수명은 명령의 수명이다** (결정됨 (리뷰)). HTTP 스레드가 대기 상한을 넘겨 `500 BID_RESULT_UNKNOWN`으로 응답해도 항목은 지우지 않는다. 명령이 레인에서 끝나야(성공, 거절, 6.4의 실패) 지우거나 거절 보관으로 넘긴다. 그래야 재전송이 아직 큐에 있는 같은 명령에 합류한다. HTTP 요청에 묶어 지우면, 첫 요청이 큐에서 기다리는 사이 재전송이 맵과 DB를 모두 지나쳐 같은 키가 큐에 두 번 들어간다. 첫째는 성공하고 둘째는 `ALREADY_HIGHEST_BIDDER`를 받아, 사용자는 이겼는데 실패를 본다 (CHALLENGES CH-06 시나리오 6).
 - 성공: 응답 본문을 `idempotency_record`에 입찰과 같은 TX-1로 쓴다. 서버가 재시작되어도 재생된다 (AC-09-4).
 - 거절: 메모리 맵에만 남긴다. 재시작하면 사라지고, 그 뒤 재전송은 새로 평가된다 (OQ-33, AC-09-12).
 - `503`: 맵에서 지운다. 기록하지 않는다 (OQ-31).
@@ -1183,13 +1251,18 @@ sequenceDiagram
 | 메트릭 | 측정 구간 | 태그 |
 |---|---|---|
 | 입찰 처리 시간 (Timer, 히스토그램) | HTTP 요청 수신 → 응답 | `laneNo`, 결과 코드 |
+| 입찰 전처리 시간 (Timer, 히스토그램) | HTTP 요청 수신 → 큐 투입 (인증, 멱등 조회, 회원 조회) | `laneNo` |
+| 큐 대기 시간 (Timer, 히스토그램) | 큐 투입 → 꺼냄. C3 때문에 마감 직전 입찰자가 잃는 시간은 전처리 + 큐 대기다 | `laneNo`, 명령 종류 |
 | 레인 처리 시간 (Timer, 히스토그램) | 큐에서 꺼냄 → 응답 완료. 검증, 커밋, 발행 단계를 나눠서 잰다 (CH-05) | `laneNo`, 단계 |
 | 레인 큐 적체량 (Gauge) | 대기 중인 입찰 수 | `laneNo` |
+| 레인 생존 (Gauge) | 마지막으로 명령을 처리한 뒤 지난 시간, 큐 맨 앞 명령의 대기 시간. `Tick`이 1초마다 들어가므로 정상이면 1초 안팎이다 (5.8) | `laneNo` |
+| 커넥션 풀 대기 (Hikari 기본 지표) | `hikaricp.connections.pending`, 연결 획득 시간. 풀 분리 판단에 쓴다 (6.3) | 풀 |
 | 브로드캐스트 넘김 시간 (Timer) | 커밋 → 브로커에 넘김. 관전자 수신까지의 지연은 클라이언트가 `occurredAt`으로 잰다 (PRD 9.1) | `laneNo` |
 | WebSocket 연결 수 (Gauge) | 현재 연결 | 인증 여부 |
 
 - 태그에는 `laneId`가 아니라 `laneNo`(1~4)를 쓴다. `laneId`는 회차마다 새로 생기므로 시계열이 끝없이 늘어난다 (CH-11 시나리오 5). 같은 시각에 진행 중인 회차가 여럿이면 `laneNo`가 겹친다. PRD 시연 시나리오는 회차 하나를 전제로 한다.
 - 백분위수는 애플리케이션에서 계산하지 않고 히스토그램으로 내보낸다. 여러 레인이나 인스턴스를 합칠 수 있어야 하기 때문이다 (CH-11).
+- 실험 ①은 관전자 0명 조건을 따로 잰다. 팬아웃이 레인 스레드에서 일어나면(7.8) 관전자 수가 동시성 제어 후보의 수치에 섞인다.
 
 ---
 
@@ -1202,7 +1275,7 @@ sequenceDiagram
 
 | 목적지 | 구독 | 내용 |
 |---|---|---|
-| `/topic/lanes/{laneId}` | 누구나 (익명 포함) | 레인 이벤트 (7.3) |
+| `/topic/lanes/{laneId}` | 누구나 (익명 포함) | 레인 이벤트와 레인 비컨 (7.3, 7.4) |
 | `/user/queue/notifications` | 인증된 연결만 | 개인 알림 (7.9) |
 
 회차 단위 토픽은 두지 않는다. 회차 시작은 각 레인의 첫 `LOT_STARTED`로, 회차 종료는 모든 레인의 `LANE_FINISHED`로 알 수 있다. 관전 화면은 예정 회차에서도 레인 토픽을 미리 구독해 두므로 시작 순간을 받는다.
@@ -1229,6 +1302,7 @@ sequenceDiagram
       "currentPrice": 60000,
       "nextPrice": 70000,
       "bidCount": 2,
+      "lastBidId": 90817,
       "deadlineAt": "2026-10-23T11:00:13.120Z",
       "pausedRemainingMs": null,
       "highestBidder": "송**",
@@ -1243,12 +1317,13 @@ sequenceDiagram
 | `type` | 이벤트 종류 (7.3) |
 | `epoch` | 서버가 부팅할 때마다 바뀌는 값. 클라이언트는 같은지만 비교하고 값의 의미는 해석하지 않는다 (OQ-34) |
 | `seq` | 레인별로 epoch 안에서 1씩 증가하는 번호 (7.4) |
-| `occurredAt` | 이 상태 변화가 DB에 커밋된 시각. 브로드캐스트 지연(커밋 → 관전자 수신, PRD 9.1)을 재는 기준이다 (CH-11 시나리오 4) |
+| `occurredAt` | 이 이벤트를 만든 트랜잭션이 커밋된 직후 레인 스레드가 `Clock`에서 읽은 시각(`committedAt`, 5.1). 트랜잭션이 없는 이벤트(`Activate`의 `LOT_STARTED`)는 처리 시각이다. 판정 시각(입찰의 `acceptedAt`)과 다른 값이다. 브로드캐스트 지연(커밋 → 관전자 수신, PRD 9.1)을 재는 기준이다 (CH-11 시나리오 4). 결정됨 (리뷰) |
 | `serverTime` | 메시지를 만든 서버 시각. 클라이언트 시계 오차를 추정하는 데 쓴다 (7.7) |
 | `state` | 이 이벤트를 반영한 뒤의 레인 동적 상태 전체. 메시지 하나만 받아도 동적 상태는 맞다 |
 | `state.position`, `state.remainingLots` | "현재 N번째 / 남은 Lot 수" (T3) |
 | `state.lot.nextPrice` | 다음 호가. 서버가 회차에 고정된 정책으로 계산한다. 클라이언트는 호가 정책을 몰라도 되고 이 값을 `amount`에 그대로 넣는다. `INVALID_BID_AMOUNT`가 생길 길을 줄인다 |
 | `state.lot.bidCount` | 0이면 첫 입찰 대기 단계다 (OQ-01) |
+| `state.lot.lastBidId` | 마지막으로 수락된 입찰의 ID. 입찰이 없으면 `null`. 성공 응답의 `bidId`와 비교해 "내가 최고 입찰자"를 판정한다 (2.5). 입찰 행의 ID이고 회원 식별자가 아니다 (PRD 9.6). 결정됨 (리뷰) |
 | `state.lot.deadlineAt` | 입찰 단계의 마감 시각 (절대 시각) |
 | `state.lot.pausedRemainingMs` | 정지 중일 때 저장한 남은 시간 (T5) |
 | `state.lot.highestBidder` | 마스킹한 닉네임. 회원 ID는 없다 (PRD 9.6) |
@@ -1267,19 +1342,30 @@ sequenceDiagram
 | `LANE_PAUSED` | 정지 (레인 단위, 회차 일괄) | 없음 (`state.lot.pausedRemainingMs`) | M-13, T5 |
 | `LANE_RESUMED` | 재개 | 없음 (`state.lot.deadlineAt`이 새 마감) | T5, T6 |
 | `LANE_FINISHED` | 마지막 Lot 뒤 간격 종료, 정지 중 마지막 Lot 강제 종료 | 없음 | 6.1 |
+| `HEARTBEAT` | `RUNNING`·`PAUSED` 레인에서 비컨 주기(제안: 5초)마다 (7.4) | 상태 이벤트가 아니다. `type`, `laneId`, `epoch`, `seq`(마지막 상태 이벤트의 값, 올리지 않음), `serverTime`만 싣는다. `state`와 `occurredAt`은 없다 | M-11, OQ-37, AC-11-7 |
 
 - 유찰 사유(입찰 없음 / 최저가 미달 / 강제 종료)는 공개 메시지에 넣지 않는다. 입찰자에게 무엇을 보여줄지는 [OQ-25]다.
 - 재시작 복구로 생긴 정지는 발행하지 않는다 (5.5.9).
 - 거절된 입찰은 발행하지 않고 `seq`도 바꾸지 않는다 (AC-09-3).
+- 클라이언트는 모르는 `type`을 버린다. 그래야 이벤트 종류를 더해도 기존 클라이언트가 깨지지 않는다.
 
 ### 7.4 seq와 epoch
 
 - `epoch`: 부팅할 때 한 번 만드는 무작위 값 (예: 8바이트 난수의 16진수). 모든 레인이 같은 값을 쓴다. 시각이 아니라 난수로 만드는 이유는 빠르게 재시작해도 겹치지 않게 하기 위해서다.
-- `seq`: 레인 런타임이 만들어질 때 0이고, 레인 이벤트를 발행할 때마다 1 증가한다. 첫 이벤트가 1이다.
+- `seq`: 레인 런타임이 만들어질 때 0이고, 상태 이벤트를 발행할 때마다 1 증가한다. 첫 이벤트가 1이다. `HEARTBEAT`는 `seq`를 올리지 않는다.
 - `seq`는 레인 스레드만 올린다. 단일 작성자이므로 서버가 매기는 번호에는 갭이 생길 수 없다. 클라이언트가 보는 갭은 전달 경로(브로커, 네트워크, 재연결)에서만 생긴다.
 - 발행은 커밋한 뒤에만 한다. 롤백된 변화에는 `seq`가 붙지 않는다.
 - 같은 세션으로 가는 메시지도 송신 채널이 스레드 풀이라 순서가 뒤바뀔 수 있다 (CH-07 시나리오 3). 잠정안은 세션별 발행 순서 보장(`setPreservePublishOrder`, CH-07 후보 A)을 켠다. 처리량에 미치는 영향은 실험 ②에서 잰다.
 - 병합(conflation)을 하면 이 규칙이 바뀐다 [OQ-40].
+
+**마지막 메시지 유실 감지: 레인 비컨** (결정됨, PRD OQ-37)
+
+- 갭은 다음 메시지가 와야 보인다. 마지막 메시지를 잃으면 메시지가 끊긴 레인에서 화면이 무기한 틀린다. `LANE_PAUSED`를 잃으면 카운트다운이 계속 돌고, `LANE_FINISHED`를 잃으면 레인이 끝나지 않은 것처럼 보인다.
+- 잃는 경로: SUBSCRIBE는 receipt를 요청하지 않으면 응답이 없어서, 브로커가 구독을 등록하기 전에 스냅샷 응답이 올 수 있다. 재연결 폭주로 inbound 채널이 밀리면 이 틈이 커진다. 커밋 뒤 발행이 예외로 실패해도 같다.
+- 그래서 `Tick`(5.8)이 비컨 주기가 될 때마다 레인 스레드가 `HEARTBEAT`를 발행한다. 레인 큐를 거치므로 상태 이벤트와 순서가 뒤바뀌지 않는다. `RUNNING`·`PAUSED` 레인만 보내고 FINISHED 레인은 보내지 않는다. READY 레인은 런타임이 없어 보내지 않지만, 회차가 시작되면 비컨이 시작되므로 첫 `LOT_STARTED`를 잃어도 감지된다.
+- 비용: 관전자 5,000명 × 4레인 ÷ 5초 = 초당 4,000프레임. CH-07이 추정한 팬아웃(초당 20만)의 2%다.
+- 비컨 주기는 서버 설정이고 스냅샷의 `heartbeatIntervalMs`로 알린다 (7.5). 클라이언트 규칙은 7.6이다.
+- SUBSCRIBE receipt로 구독 등록을 확인하는 방법은 구독 순간의 틈만 막고, Simple Broker가 지원하는지 버전별로 확인해야 해서 고르지 않았다.
 
 ### 7.5 스냅샷 API
 
@@ -1293,6 +1379,7 @@ GET /api/lanes/{laneId}/snapshot
   "epoch": "9c41e07a5b3d2f18",
   "seq": 58,
   "serverTime": "2026-10-23T11:00:04.010Z",
+  "heartbeatIntervalMs": 5000,
   "state": { "...": "7.2와 같은 모양" },
   "lotInfo": { "lotId": 345, "name": "필름 카메라", "imageUrl": "/api/images/9f3c...", "startPrice": 50000 },
   "nextLotInfo": null,
@@ -1310,7 +1397,8 @@ GET /api/lanes/{laneId}/snapshot
 | 마지막 시퀀스 번호와 epoch | `seq`, `epoch` |
 | (로그인 시) 본인이 최고 입찰자인지 | `me.isHighestBidder` |
 
-- **일관성**: 레인 스레드는 커밋할 때마다 불변 `LaneView`(동적 상태 + `seq`)를 새로 만들어 참조를 바꾼다. 스냅샷 API는 그 참조 하나만 읽으므로 현재가와 `seq`가 언제나 같은 시점의 값이다 (CH-08 시나리오 2). `serverTime`만 응답하는 시각으로 넣는다. 잠정안 (CH-08 (다)).
+- **일관성**: 레인 스레드는 커밋할 때마다 불변 `LaneView`(동적 상태 + `seq`)를 새로 만들어 참조를 바꾼다. 스냅샷 API는 그 참조 하나만 읽으므로 현재가와 `seq`가 언제나 같은 시점의 값이다 (CH-08 시나리오 2). `serverTime`만 응답하는 시각으로 넣는다. 잠정안 (CH-08 (다)). 참조는 `volatile`(또는 `AtomicReference`)로 둔다. 레인 스레드가 바꾼 참조를 HTTP 스레드가 바로 보게 하기 위해서다.
+- **비컨 주기**: `heartbeatIntervalMs`는 레인 비컨의 주기다 (7.4). 클라이언트는 이 값으로 "비컨 2주기 없음"을 판단한다.
 - **비용**: 실행 중인 레인의 스냅샷은 DB를 읽지 않는다. 재연결 폭주(CH-08 시나리오 4) 때 DB가 먼저 무너지지 않게 하기 위해서다. `me.isHighestBidder`는 뷰에 들어 있는 최고 입찰자 ID(공개 직렬화에는 없다)를 요청자 ID와 비교해 만든다.
 - 실행 중이 아닌 레인(READY, 그리고 재시작으로 런타임이 없는 FINISHED)은 DB에서 만들고 `seq`는 0이다.
 
@@ -1326,48 +1414,63 @@ connect():
   레인마다 SUBSCRIBE /topic/lanes/{laneId}     // 이때부터 받은 메시지는 버퍼에 쌓는다
   GET /api/sessions/{sessionId}                // 레인 스냅샷 묶음
   레인마다:
-    lane = snapshot
-    버퍼의 메시지 중 epoch == lane.epoch 이고 seq > lane.seq 인 것을 seq 순서로 apply
+    lane = snapshot (applySnapshot)
+    버퍼의 메시지를 도착 순서대로 onMessage로 처리한다
   실시간 모드로 바꾼다
 
 onMessage(msg):
   if msg.epoch != lane.epoch       → resync(lane)
+  else if msg.type == HEARTBEAT:
+    lastHeartbeatAt[lane] = 지금
+    if msg.seq > lane.seq          → resync(lane)       // 마지막 메시지 유실
   else if msg.seq <= lane.seq      → 버린다 (이미 반영됨)
   else if msg.seq == lane.seq + 1  → lane = reduce(lane, msg)
   else                             → resync(lane)       // 갭
 
+heartbeatWatch() (1초마다):
+  laneStatus가 RUNNING·PAUSED인 레인에서
+  마지막 비컨 뒤 2 × heartbeatIntervalMs가 지났으면 → resync(lane)
+
 resync(lane):
   레인마다 동시에 1건만 보낸다. 그동안 온 메시지는 버퍼에 쌓는다
   GET /api/lanes/{laneId}/snapshot → connect()의 스냅샷 단계부터 반복
+
+applySnapshot(snapshot):
+  epoch가 다르거나, 같은 epoch에서 snapshot.seq ≥ lane.seq일 때만 캐시를 바꾼다
 
 onDisconnect():
   지수 백오프 + 무작위 지연으로 재연결한다 (재연결 폭주 완화, CH-08 시나리오 4)
   Access Token이 만료되었으면 먼저 재발급받는다 (PRD 9.4-1)
 ```
 
-- `reduce`는 `msg.state`로 동적 상태를 통째로 바꾼다. `LOT_STARTED`면 `lotInfo`도 바꾸고, `BID_ACCEPTED`면 `lastBidSeq`를 기록한다 (2.5).
+- `reduce`는 `msg.state`로 동적 상태를 통째로 바꾼다. `LOT_STARTED`면 `lotInfo`도 바꾼다. "내가 최고 입찰자"는 바뀐 `state.lot.lastBidId`로 다시 계산한다 (2.5).
 - 레인 상태는 TanStack Query 캐시(`['lane', laneId]`)에 두고 STOMP 핸들러가 `setQueryData`로 바꾼다. 화면 컴포넌트는 캐시만 구독한다. 스냅샷을 다시 받아도 같은 키에 들어가므로 상태의 출처가 하나다 (제안).
-- 입찰 버튼은 누를 때마다 새 멱등 키(`crypto.randomUUID()`)를 만든다. 응답을 받지 못한 경우(네트워크 오류, 5xx)에만 처음 요청 뒤 10초 안에서 같은 키로 재전송한다. 4xx와 `503`은 재전송하지 않는다 (PRD 6.3).
+- **레인 쿼리의 자동 재조회를 끈다** (결정됨 (리뷰)): `staleTime: Infinity`, `refetchOnWindowFocus: false`, `refetchOnReconnect: false`, `refetchOnMount: false`. 기본값이면 라이브러리가 위 절차를 거치지 않고 스냅샷을 다시 받아, 그 사이 STOMP로 반영한 더 새 상태를 낡은 스냅샷으로 덮어쓴다(CH-08 시나리오 8). 스냅샷을 캐시에 넣는 곳은 `applySnapshot` 한 함수로 모은다.
+- 입찰 버튼은 누를 때마다 새 멱등 키(`crypto.randomUUID()`)를 만든다. 응답을 받지 못했거나(네트워크 오류) `500 BID_RESULT_UNKNOWN`을 받은 경우에만 처음 요청 뒤 10초 안에서 같은 키로 재전송한다. 4xx와 `503`은 재전송하지 않는다 (PRD 6.3).
+- 재전송 창이 닫힌 뒤에는 스냅샷으로 결과를 확인한다. 서버 재시작은 대개 10초보다 길어서 크래시 뒤에는 이 경로가 주 경로다. 재시작 뒤 레인은 `PAUSED`라 그 사이 밀려날 수 없으므로, `lastBidId`(또는 `me.isHighestBidder`)가 내 입찰의 결과와 같다 (PRD 9.4-5).
 
 ### 7.7 서버 시각 동기화와 카운트다운
 
-- 모든 레인 메시지, 스냅샷, 입찰 응답에 `serverTime`이 있다. 마감은 절대 시각 `deadlineAt`이다 (C4).
+- 레인 메시지(비컨 포함)와 스냅샷에 `serverTime`이 있다. 마감은 절대 시각 `deadlineAt`이다 (C4).
+- 입찰 응답에는 `serverTime`이 없다 (결정됨 (리뷰)). 멱등 재생 응답은 처음 응답을 그대로 돌려주므로, 응답에 서버 시각이 있으면 재생할 때 몇 초 전 시각이 나가 오차 추정을 흐린다. 화면 상태도 입찰 응답으로 바꾸지 않으므로(2.5) 응답에 서버 시각이 필요 없다. 비컨이 5초마다 시각 표본을 주므로 표본이 모자라지도 않다.
 - 남은 시간 = `deadlineAt − (서버의 현재 시각 추정값)`. 추정 방식은 CH-01 (나)에서 정한다. 지금 계약은 후보 B1(오차 추정: `serverTime − 수신 시각`)과 B3(수신 시점부터 `deadlineAt − serverTime`을 셈)을 바꾸지 않고 지원한다. 후보 B2(왕복 보정)를 고르면 시간 동기 요청 경로가 하나 생긴다.
-- 카운트다운이 0이 되면 "마감 판정 중"으로 표시하고, `LOT_CLOSED`를 받기 전에는 결과를 보여주지 않는다 (C4, AC-12-6). 마감 메시지가 끝내 오지 않으면 언제 스냅샷을 다시 받을지는 [OQ-37]이다.
+- 카운트다운이 0이 되면 "마감 판정 중"으로 표시하고, `LOT_CLOSED`를 받기 전에는 결과를 보여주지 않는다 (C4, AC-12-6). 마감 메시지를 놓쳤는지는 시간이 아니라 비컨의 `seq`로 판단한다 (OQ-37). 마감 판정이 늦어지는 중이면 비컨의 `seq`가 반영한 `seq`와 같으므로 계속 기다린다.
 - 서버 판정은 클라이언트 표시와 무관하다. 클라이언트에 시간이 남아 보여도 서버 기준으로 마감이면 `LOT_NOT_BIDDING`이다 (C4).
 
 ### 7.8 브로커 설정 (CH-07 측정 대상)
 
 | 항목 | 시작값 | 관련 |
 |---|---|---|
-| 하트비트 | (제안) 서버·클라이언트 모두 10초 | 연결 5,000개에 주기마다 프레임이 추가된다 (CH-07 시나리오 5) |
+| 하트비트 | (제안) 서버·클라이언트 모두 10초 | 연결 5,000개에 주기마다 프레임이 추가된다 (CH-07 시나리오 5). STOMP 하트비트는 연결 생존만 알린다. 레인의 `seq`는 레인 비컨이 알린다 |
+| 레인 비컨 주기 | (제안) 5초 | 초당 4,000프레임 (7.4) |
 | 세션별 발행 순서 보장 | 켬 (잠정안) | 7.4 |
 | `clientOutboundChannel` 스레드 풀 | Spring 기본값 | CH-07 후보 A |
 | `sendTimeLimit`, `sendBufferSizeLimit` | Spring 기본값 (10초, 512KB) | 느린 클라이언트 격리 (CH-07 시나리오 2) |
 | 수신 메시지 크기 상한 | (제안) 작게, 예: 8KB. 클라이언트는 CONNECT와 SUBSCRIBE만 보낸다 | 11장 |
 | 레인 이벤트 직렬화 | 이벤트당 1회 | 실험 ②의 비교군은 4주차 프로파일링으로 정한다 (PRD 9.8) |
 
-- 레인 스레드에서 발행할 때 구독자 5,000명분의 팬아웃이 레인 스레드에서 일어나는지는 4주차 계측으로 확인할 가설이다 (CH-07 시나리오 1). 확인되면 발행을 전용 실행기로 넘긴다 (CH-07 후보 C).
+- 레인 스레드에서 발행할 때 구독자 5,000명분의 팬아웃이 레인 스레드에서 일어나는지는 4주차 계측으로 확인할 가설이다 (CH-07 시나리오 1). `brokerChannel`에 실행기를 설정하지 않으면 `convertAndSend`를 부른 스레드가 구독 순회를 맡으므로, 설정과 스레드 덤프로 실험 ① 전에 확인한다. 확인되면 발행을 전용 실행기로 넘긴다 (CH-07 후보 C).
+- 발행을 넘길 때도 레인별 순서를 지킨다. 레인당 단일 스레드나 레인 키로 직렬화하는 실행기로 넘긴다. 공유 스레드 풀에 그냥 넘기면 `seq` 순서가 깨진다. 비컨도 같은 경로로 나가야 상태 이벤트를 앞지르지 않는다.
 
 ### 7.9 개인 알림 (S-01)
 
@@ -1463,6 +1566,7 @@ PRD 6.5(C1~C5)와 CHALLENGES CH-01을 구현 규칙으로 옮긴 것이다.
 | R10 | JWT 만료 검증도 같은 `Clock`을 쓴다. 테스트에서 시간을 옮겨 토큰 만료를 재현할 수 있다 | AC-01-2, AC-11-6 |
 | R11 | 기간 파라미터는 DB에 `*_ms INT`, API에서는 밀리초 정수로 주고받는다 (제안) | |
 | R12 | 클라이언트 시계는 표시에만 쓴다 | C4 |
+| R13 | 레인 안의 처리 시각은 뒤로 가지 않는다: `now = max(clock.instant(), 직전 처리 시각)`. 시계가 뒤로 간 만큼 그 레인의 시간은 멈춰 있는 셈이다 (결정됨 (리뷰)) | 5.2, OQ-35 |
 
 **R2를 두는 이유.** `Instant`는 마이크로초 이하까지 담는다. 메모리에서 `11:00:14.9996`에 처리한 입찰은 마감 `11:00:15.000`보다 앞이라 맞게 수락된다. 그런데 `DATETIME(3)` 컬럼은 소수 초를 반올림해서 `11:00:15.000`으로 저장한다. 그러면 재계산 스크립트(INV-4)는 이 입찰을 마감 시각에 수락된 것으로 본다. PRD C5가 초 단위 컬럼에서 경고한 문제가 밀리초 단위에서 똑같이 생기는 것이다. 시각을 만드는 곳에서 밀리초로 자르면 메모리와 DB가 같은 값을 보고, 반올림이 일어날 일 자체가 없다. 정밀도 테스트(CH-01)로 저장한 값과 다시 읽은 값이 같은지 확인한다.
 
@@ -1470,7 +1574,7 @@ PRD 6.5(C1~C5)와 CHALLENGES CH-01을 구현 규칙으로 옮긴 것이다.
 
 **정하지 않은 것**
 
-- 서버 시계가 점프할 때(NTP step)의 동작 [OQ-35]: R9의 타이머는 단조 시계로 기다리고 판단은 벽시계로 하므로, 시계가 뛰면 둘이 어긋난다.
+- 서버 시계가 점프할 때(NTP step)의 동작 [OQ-35]: R9의 타이머는 단조 시계로 기다리고 판단은 벽시계로 하므로, 시계가 뛰면 둘이 어긋난다. R13은 레인 안의 역행(수락 시각 역전, 마감 재계산 역행)만 막는다. 시계가 앞으로 뛰는 경우와 타이머·판정의 어긋남은 그대로 남는다.
 - 결제 기한 정각의 결제 요청이 유효한지, 기준이 요청 수신 시각인지 처리 시각인지 [OQ-36].
 - 클라이언트 카운트다운의 오차 추정 방식 (CH-01 (나), 7.7).
 
@@ -1484,14 +1588,17 @@ CHALLENGES CH-12의 장애 시나리오를 구성 요소별로 정리했다.
 
 | 구성 요소 | MVP (1대) | 2대 이상이면 깨지는 것 | 바꿔야 하는 것 (후보) |
 |---|---|---|---|
-| 레인 직렬 큐 | 메모리, 레인마다 단일 작성자 | 같은 레인의 큐가 서버마다 생겨 이중 성공이 다시 생긴다 (CH-12 시나리오 2) | 레인 담당 서버 지정(DB 임대 + 펜싱 토큰, CH-12 후보 B) 또는 엔진 1대 분리(후보 C) |
+| 레인 직렬 큐 | 메모리, 레인마다 단일 작성자 | 같은 레인의 큐가 서버마다 생겨 이중 성공이 다시 생긴다 (CH-12 시나리오 2). 레인 쓰기의 조건부 UPDATE(6.3)가 DB에서 한 번 더 막지만 펜싱을 대신하지는 않는다 | 레인 담당 서버 지정(DB 임대 + 펜싱 토큰, CH-12 후보 B) 또는 엔진 1대 분리(후보 C). 펜싱 토큰은 `epoch`로 시작한다: `lane.owner_epoch`를 기록하고 레인 트랜잭션에 `AND owner_epoch = :myEpoch`를 건다 |
+| 단일 인스턴스 가드 | 부팅 때 `GET_LOCK`, 못 잡으면 기동하지 않는다 (5.5.9) | 의도한 2대도 막는다 | 레인 담당 임대로 바꾼다 |
+| 부팅 복구 | DB의 `RUNNING` 레인을 모두 `PAUSED`로 바꾼다 | 다른 서버가 처리 중인 레인까지 멈춘다 (CH-12 시나리오 7) | 자기가 담당하던 레인에만 복구한다 |
 | 입찰 라우팅 | 받은 서버가 처리 | 담당이 아닌 서버에 도착한다 | 담당 서버로 전달(B) / 엔진으로 전달(C) |
 | 마감·간격 타이머 | 프로세스 하나 | 같은 Lot을 두 번 마감한다 (시나리오 3) | 담당 서버(또는 엔진)만 타이머를 가진다 |
 | 회차 자동 시작 | 프로세스 하나 | 두 서버가 함께 시작을 시도한다 (시나리오 4) | 조건부 갱신이라 중복 시도가 무해하다 (5.5.1). 바꿀 것이 없다 |
 | 결제 기한 만료 작업 | 프로세스 하나 | 두 번 돈다 (시나리오 4) | 조건부 갱신과 `member_warning.trade_id` 유니크로 중복이 무해하다 (CH-10). 무해하지 않은 작업이 생길 때만 스케줄러 락을 쓴다 |
 | Simple Broker | 자기 JVM의 세션에만 보낸다 | 다른 서버에 붙은 관전자는 이벤트를 못 받는다 (시나리오 1) | Redis Pub/Sub로 모든 서버에 뿌리거나(C-03), 외부 STOMP 브로커 릴레이(CH-12 후보 D) |
+| 개인 알림 (`/user/queue/notifications`) | Simple Broker의 사용자 레지스트리는 JVM 로컬이다 | 엔진 서버가 보낸 알림이 다른 서버에 연결된 사용자에게 닿지 않는다 (CH-12 시나리오 8) | 알림도 Pub/Sub로 모든 서버에 뿌려 각 서버가 자기 세션에 보내거나, 외부 브로커 릴레이의 사용자 목적지를 쓴다 |
 | `seq`·`epoch` | 프로세스 하나가 매긴다 | — | 레인 담당(또는 엔진)만 매긴다. 담당이 바뀌면 epoch가 바뀌어 클라이언트가 스냅샷부터 다시 받는다. OQ-34의 구조를 그대로 쓴다 |
-| 갭 재동기화 | 예외 경로 | Redis Pub/Sub는 끊긴 구독자에게 메시지를 보관하지 않는다 | 정상 경로가 된다. 스냅샷 API 부하를 다시 잰다 |
+| 갭 재동기화 | 예외 경로 | Redis Pub/Sub는 끊긴 구독자에게 메시지를 보관하지 않는다 | 정상 경로가 된다. 스냅샷 API 부하를 다시 잰다. 마지막 메시지 유실은 레인 비컨(7.4)이 그대로 감지한다 |
 | 스냅샷 API | 메모리 뷰 | 담당이 아닌 서버에는 뷰가 없다 | 담당 서버로 전달하거나, 서버마다 마지막 이벤트로 뷰를 유지한다 |
 | 멱등 진행 중 맵·거절 기록 | 메모리 | 재전송이 다른 서버로 가면 키가 없다 (시나리오 5) | 레인 담당으로 라우팅되면 그대로 유효하다. 아니면 공유 저장소(DB 유니크, Redis `SET NX`) |
 | 레인 상태 저장소 | 메모리 (원본은 DB) | — | 담당 서버 모델이면 그대로 둔다. 서버 사이에 공유해야 하면 Redis 구현 (C-02) |
@@ -1517,6 +1624,9 @@ CH-12와 같다. 셋 다 확인되기 전에는 착수하지 않는다 (PRD C-03
 - **포트 경계** (3.4): `LaneStore`, `LaneEventPublisher`, `TimerScheduler`, `ImageStorage`, `PaymentGateway`. 확장 때 구현만 갈아 끼운다.
 - **계약의 `epoch`** (OQ-34): 담당 서버가 바뀌는 것을 클라이언트에는 epoch 변경 하나로 표현할 수 있다.
 - **회차 시작과 결제 만료를 조건부 갱신으로**: 여러 서버에서 돌아도 결과가 같다.
+- **레인 쓰기를 조건부 UPDATE로** (6.3): 단일 작성자가 깨지면 DB가 영향 행 0으로 알린다.
+- **단일 인스턴스 가드** (5.5.9): 실수로 뜬 두 번째 인스턴스를 막는다. 확장할 때 레인 담당 임대로 바꾸는 자리다.
+- **레인 비컨** (7.4): Pub/Sub 경로에서 갭 재동기화가 정상 경로가 되어도 마지막 메시지 유실을 감지한다.
 - **서버 로컬 상태를 이 표에 적힌 것으로 한정**: 레인 런타임, 멱등 진행 중 맵, 브로커 구독 목록, 이미지 파일. 새 기능이 서버 로컬 상태를 만들면 이 표에 추가한다.
 - **Redis는 도입하지 않는다.** 들어올 수 있는 자리는 위 표의 팬아웃(C-03), 레인 상태 공유(C-02), 멱등 공유 저장소 세 곳뿐이고, 모두 10.2의 조건이 확인된 뒤의 일이다.
 
@@ -1528,7 +1638,7 @@ CH-12와 같다. 셋 다 확인되기 전에는 착수하지 않는다 (PRD C-03
 |---|---|---|---|
 | 계정 | 비밀번호 유출 | BCrypt로 저장한다 (Spring Security `DelegatingPasswordEncoder`) | M-01 |
 | 토큰 | 탈취된 Access Token | 수명을 짧게 둔다 (제안: 15분). HTTPS와 WSS로만 오간다 | M-01 |
-| | Refresh Token 유출 | Refresh Token은 JWT가 아닌 256비트 무작위 값이고, DB에는 SHA-256 해시만 저장한다. 재발급할 때 새 값으로 바꾸고 이전 값을 폐기한다(회전). 폐기된 값이 다시 들어오면 그 회원의 Refresh Token을 모두 폐기한다 (제안) | M-01, (가정) DB 저장 |
+| | Refresh Token 유출 | Refresh Token은 JWT가 아닌 256비트 무작위 값이고, DB에는 SHA-256 해시만 저장한다. 재발급할 때 새 값으로 바꾸고 이전 값을 폐기한다(회전). 폐기된 값이 다시 들어오면 `401`로 거절만 한다. 재사용을 감지해 그 회원의 토큰을 모두 폐기하는 것은 PRD 근거가 없어 넣지 않았다 (결정됨 (리뷰), 부록 B-15) | M-01, (가정) DB 저장 |
 | | XSS로 토큰 탈취 | Access Token은 메모리에만 둔다. Refresh Token은 `HttpOnly; Secure; SameSite=Strict` 쿠키에 두고 경로를 재발급 엔드포인트로 한정한다 (제안). 쿠키가 재발급 요청에만 실리므로 다른 API에는 CSRF 위험이 없다 | |
 | | 서명 키 유출 | HS256, 256비트 이상 무작위 키를 환경 변수로 넣는다. 저장소에 커밋하지 않는다 | |
 | 인가 | ADMIN의 입찰·출품 | 역할은 하나만 가진다. USER 전용 API는 `hasRole('USER')`이므로 ADMIN은 `403`이다 | AC-02-7, AC-09-9 |
@@ -1541,7 +1651,7 @@ CH-12와 같다. 셋 다 확인되기 전에는 착수하지 않는다 (PRD C-03
 | WebSocket | 다른 사이트에서 연결 (CSWSH) | 허용한 출처의 핸드셰이크만 받는다. 인증이 쿠키가 아니라 CONNECT 헤더라서, 다른 사이트가 연결해도 사용자 권한을 얻지 못한다 | |
 | | 브로커 목적지 직접 구독 | 구독 허용 목록(8.2) 밖은 거절한다. `/queue/**`를 직접 구독해 다른 사람의 개인 큐를 엿보는 것을 막는다 | AC-11-1 |
 | | 클라이언트 SEND | 모두 거절하고, 수신 메시지 크기 상한을 작게 둔다 (7.8) | — |
-| 입력 | 형식 오류와 주입 | Bean Validation으로 검증한다. 금액 1,000원 단위와 범위는 애플리케이션이 검증하고 DB `CHECK`가 한 번 더 막는다. 쿼리는 JPA·QueryDSL의 파라미터 바인딩만 쓴다 | M-02 |
+| 입력 | 형식 오류와 주입 | Bean Validation으로 검증한다. 금액 1,000원 단위와 범위는 애플리케이션이 검증하고 DB `CHECK`가 한 번 더 막는다. 쿼리는 JPA의 파라미터 바인딩만 쓴다 | M-02 |
 | | 멱등 키 남용 | 키는 회원 단위 이름공간이라 다른 회원의 키를 재사용할 수 없다. 길이와 문자를 제한한다 (제안: 최대 64자) | 6.3 조건 2 |
 | 이미지 업로드 | 악성 파일, 경로 조작 | 확장자가 아니라 파일 시그니처로 형식을 확인한다. 저장 이름은 서버가 만든 무작위 키이고 사용자 파일명은 쓰지 않는다. 응답에는 고정된 `Content-Type`과 `X-Content-Type-Options: nosniff`를 붙인다. 크기 상한은 서버 설정으로 둔다 (값은 부록 B) | M-02 |
 | 운영 | 비밀 값 유출 | DB 비밀번호, JWT 키, ADMIN 비밀번호 해시는 환경 변수와 GitHub Actions secrets로 넣는다 | |
@@ -1559,24 +1669,34 @@ PRD에 없어서 넣지 않은 보안 기능(로그인 시도 제한, 로그아�
 | 과제 | 이 문서가 그린 방식 | 구분 | 바뀌면 고칠 곳 |
 |---|---|---|---|
 | CH-01 (가) 시간 출처와 테스트 | 판단과 실행을 나누고, `Clock`과 `TimerScheduler`를 포트로 둔다 | 잠정안 | 5.1 |
-| CH-01 (나) 클라이언트 카운트다운 | 계약(`deadlineAt` + `serverTime`)이 후보 B1·B3를 모두 지원한다 | 미결 | 7.7 |
-| CH-01 (다) 서버 시계 점프 | 정하지 않음 | 미결 [OQ-35] | 9 |
+| CH-01 (나) 클라이언트 카운트다운 | 계약(`deadlineAt` + `serverTime`)이 후보 B1·B3를 모두 지원한다. 입찰 응답에는 `serverTime`을 넣지 않는다 | 미결. 응답 시각 제외는 결정됨 (리뷰) | 6.5, 7.7 |
+| CH-01 (다) 서버 시계 점프 | 정하지 않음. 레인 안의 처리 시각만 뒤로 가지 않게 고정한다 (R13) | 미결 [OQ-35]. R13은 결정됨 (리뷰) | 5.2, 9 |
 | CH-02 (가) 상태 머신 표현 | `sealed` 명령·이벤트 + 상태 머신 클래스 | 잠정안 | 5.3 |
 | CH-02 (나) 회차 수준 전이 | 시작은 조건부 갱신(B1), 종료 집계는 회차 행을 먼저 잠근다(B2) | 잠정안 | 5.5.1, 5.5.6 |
 | CH-02 (다) 놓친 예정 시각 | 회차별 타이머, 부팅 시각 이후만 등록 | 잠정안 [OQ-38] | 5.7 |
 | CH-03 마감 타이머 | 취소하지 않는 확인 이벤트(후보 B) + 마감 선적용 | 잠정안 | 5.5.4 |
+| | 1초 `Tick` 안전망, 타이머 세대 번호, 간격은 `gapEndsAt`으로 판정 | 결정됨 (리뷰) | 5.3, 5.5.5, 5.8 |
 | CH-04 동시 입찰 | 레인 직렬 큐(후보 C) + `(lot_id, amount)` 유니크 | 기본안 | 5, 6 |
-| CH-05 (가) 커밋 실패 | 커밋한 뒤에만 반영하고, 실패하면 DB에서 재구성(A1) | 잠정안 [OQ-32] | 6.4 |
-| CH-05 (나) 큐 적체 | 입찰에만 상한, `503` | 결정됨 (OQ-31) | 5.2, 6.2 |
-| CH-05 (다) 부수 효과 | 알림은 커밋 뒤 별도 실행기 | 잠정안 | 6.3 |
+| | 레인 쓰기를 조건부 UPDATE로, 영향 행 확인 | 결정됨 (리뷰) | 6.3 |
+| CH-05 (가) 커밋 실패 | 커밋한 뒤에만 반영하고, 실패하면 잠금 읽기로 DB에서 재구성(A1). 응답은 `500 BID_RESULT_UNKNOWN` | 잠정안 [OQ-32]. 응답 코드는 결정됨 (OQ-44) | 6.4 |
+| | 레인 스레드 시간 제한, 예외 격리, 생존 지표 | 결정됨 (리뷰). 값은 측정 | 5.8 |
+| CH-05 (나) 큐 적체 | 입찰에만 상한, `503`. HTTP 대기 상한을 넘으면 `500 BID_RESULT_UNKNOWN` | 결정됨 (OQ-31, OQ-44) | 5.2, 6.2 |
+| CH-05 (다) 부수 효과 | 낙찰·유찰 알림은 마감 트랜잭션에, OUTBID만 커밋 뒤 별도 실행기 | 결정됨 (리뷰). OUTBID 유실 허용 범위는 미결 | 6.3 |
+| CH-05 커넥션 풀 | HTTP 조회와 레인 커밋이 한 풀을 쓴다. 풀 대기 지표로 4주차에 분리 여부 판단 | 측정으로 결정 | 6.3, 6.7 |
 | CH-06 멱등 | HTTP 계층 진행 중 맵(후보 C) + 성공은 입찰 트랜잭션에 기록 | 잠정안 | 6.6 |
+| | 진행 중 항목의 수명 = 명령의 수명, 합류할 때 본문 해시 비교 | 결정됨 (리뷰) | 6.6 |
 | CH-07 브로드캐스트 | Simple Broker | 기본안 | 7 |
 | | 동적 상태는 매 메시지에, 정적 정보는 `LOT_STARTED`·스냅샷에만. 세션별 발행 순서 보장 | 잠정안 | 7.2, 7.4 |
+| | 발행 실행기 분리 | 측정으로 결정 (4주차 계측) | 7.8 |
 | CH-08 재동기화 | 구독 → 버퍼 → 스냅샷 (A2), 불변 뷰 참조 교체 | 기본안 (PRD 9.4) + 잠정안 | 7.5, 7.6 |
-| CH-09 재시작 복구 | 도메인 테이블로 복구(후보 A). `lane_transition`은 검증용 | 잠정안 | 4.4, 5.5.9 |
+| | 레인 비컨(`HEARTBEAT`)으로 마지막 메시지 유실 감지 | 결정됨 (OQ-37) | 7.3, 7.4, 7.6 |
+| | "내가 최고 입찰자"는 `lastBidId`와 응답 `bidId` 비교, `occurredAt`은 커밋 직후 시각, 클라이언트 자동 재조회 끔 | 결정됨 (리뷰) | 2.5, 7.2, 7.6 |
+| CH-09 재시작 복구 | 도메인 테이블 + `lane` 정지 컬럼 2개로 복구(후보 A + B의 최소판). `lane_transition`은 이력이고 복구는 읽지 않는다 | 결정됨 (리뷰), 정지 규칙은 OQ-10·43 | 4.4, 5.5.9 |
+| | 단일 인스턴스 가드(`GET_LOCK`), crash-only 종료 | 결정됨 (리뷰) | 5.5.9 |
 | CH-10 결제 경합 | 정하지 않음. 유니크 제약 두 개만 고정 | 미결 | 4.4 |
 | CH-11 측정 | 메트릭 태그는 `laneNo`, 히스토그램으로 내보냄 | (제안) | 6.7 |
 | CH-12 다중 서버 | 확장하지 않음 | 기본안 | 10 |
+| (기술 선택) 조회 쿼리 | QueryDSL 없이 `@Query` + DTO 프로젝션 | 결정됨 (리뷰) | 1.3 |
 
 ---
 
@@ -1597,6 +1717,8 @@ PRD에 없어서 설계에 넣지 않았거나, 설계하려면 PRD의 판단이
 | B-9 | 결제 기한 임박 알림을 언제 보내는가 | 정하지 않았다 | S-01, 만료 작업 |
 | B-10 | 마감 시각이 지났지만 아직 마감 확인이 처리되지 않은 Lot에 정지·강제 종료가 처리되면 | 시간 마감을 먼저 적용한다 (잠정안, 5.5.4). C3를 운영자 명령에도 똑같이 적용한 것이다 | 최고가 ≥ 최저 낙찰가인 Lot은 강제 종료를 눌렀어도 SOLD가 될 수 있다 (AC-14-1과 겹치는 경계) |
 | B-11 | 거절 응답의 보관 기간 | 성공 기록만 24시간, 거절 기록은 짧게(예: 1분) 두는 것을 제안했다 (6.6) | PRD 6.3 조건 2의 "키는 24시간 보관" 문구 |
-| B-12 | 결과를 모르는 실패의 입찰 응답 (5xx) | `500`으로 응답하고 같은 키 재전송으로 결과를 확정한다 (6.4). PRD 6.3 표에 5xx가 없다 | 에러 코드 표, 클라이언트 재전송 규칙 |
+| B-12 | 결과를 모르는 실패의 입찰 응답 (5xx) | 해소: PRD 0.4의 OQ-44로 `500 BID_RESULT_UNKNOWN`을 정했다. 결과 대기 상한 초과도 같은 코드다 (6.4, 6.6) | PRD 6.3 표, 클라이언트 재전송 규칙 |
 | B-13 | `INVALID_REQUEST`, `LANE_NOT_FOUND`의 검증 순서 | 인증 다음, 멱등 확인 앞으로 적었다 (6.2) | AC-09-3 |
 | B-14 | 운영자 명령의 응답 (회차 일괄 정지에서 레인별 결과 등) | 레인별 결과를 모아 돌려준다고만 적었다. 운영자 API 에러 코드는 1주차 OpenAPI에서 정한다 (PRD 6.1) | A-04 화면 |
+| B-15 | Refresh Token 재사용 감지 (폐기된 값이 다시 오면 그 회원의 토큰 전체 폐기) | 넣지 않았다. 회전만 하고 폐기된 값은 `401`로 거절한다 (11장) | 탈취된 Refresh Token이 먼저 쓰이면 정상 사용자의 다음 재발급이 실패할 뿐, 서버는 탈취를 알아채지 못한다 |
+| B-16 | 재시작 전에 운영자가 정지해 둔 레인의 재개 규칙 | 해소: PRD 0.4의 OQ-43으로 T5를 따르기로 했다 (5.5.7, 5.5.9) | `lane` 정지 컬럼 |
