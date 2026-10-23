@@ -2,11 +2,12 @@
 
 | 항목 | 내용 |
 |---|---|
-| 버전 | 0.2 (초안) |
+| 버전 | 0.3 (초안) |
 | 작성일 | 2026-10-23 |
-| 변경 이력 | 0.1 최초 작성 / 0.2 리뷰 결정 반영: 레인 비컨과 `Tick`(5.8, 7.4), `occurredAt`·`lastBidId` 정의, 입찰 응답에서 `serverTime` 제거, `500 BID_RESULT_UNKNOWN`(PRD OQ-44), `lane` 정지 컬럼(OQ-43), 간격 정지 규칙(OQ-10), 레인 스레드 장애 대응, 조건부 레인 쓰기, 단일 인스턴스 가드, crash-only, QueryDSL 제외 |
-| 근거 문서 | [PRD.md](PRD.md) 0.4, [CHALLENGES.md](CHALLENGES.md) 0.2, [IDEA.md](IDEA.md) |
-| 상태 | 초안. 1주차 계약(OpenAPI, STOMP 메시지 스키마)과 스키마의 바탕이 된다. CHALLENGES에서 아직 정하지 않은 과제는 여기서도 정하지 않고, 어느 후보를 고르든 바뀌지 않는 경계만 고정한다 |
+| 변경 이력 | 0.1 최초 작성 / 0.2 리뷰 결정 반영: 레인 비컨과 `Tick`(5.8, 7.4), `occurredAt`·`lastBidId` 정의, 입찰 응답에서 `serverTime` 제거, `500 BID_RESULT_UNKNOWN`(PRD OQ-44), `lane` 정지 컬럼(OQ-43), 간격 정지 규칙(OQ-10), 레인 스레드 장애 대응, 조건부 레인 쓰기, 단일 인스턴스 가드, crash-only, QueryDSL 제외 / 0.3 계약 문서([API.md](API.md), [EVENTS.md](EVENTS.md)) 반영: 에러 응답 형식(6.5), 엔드포인트 추가와 `?stage=`(2.7), 출품물 진행 단계(4.4, PRD OQ-46), 메시지의 `gapEndsAt`·`pauseCause`(7.2), 첫 진입 동기화(7.6), 시계 보정 표본(7.7), 로그아웃과 다중 탭 재발급(11, PRD OQ-45), 지난 예정 시각 거절(5.7, PRD OQ-48). 부록 B의 B-1·B-13·B-14 해소 |
+| 근거 문서 | [PRD.md](PRD.md) 0.5, [CHALLENGES.md](CHALLENGES.md) 0.2, [IDEA.md](IDEA.md) |
+| 계약 문서 | [API.md](API.md) (REST), [EVENTS.md](EVENTS.md) (WebSocket/STOMP). 요청·응답·메시지의 형식과 에러 코드는 계약 문서가 원본이다. 이 문서의 JSON 예시는 설계 설명용이고, 다르면 계약 문서를 따른다 |
+| 상태 | 초안. 계약 문서와 스키마의 바탕이 된다. CHALLENGES에서 아직 정하지 않은 과제는 여기서도 정하지 않고, 어느 후보를 고르든 바뀌지 않는 경계만 고정한다 |
 
 ---
 
@@ -108,7 +109,7 @@
 | 마이그레이션 | Flyway | MySQL 지원 모듈(`flyway-mysql`)이 따로 필요하다 |
 | 인증 | Spring Security + JWT | JWT 발급·검증은 Spring Security의 `spring-security-oauth2-jose`(Nimbus)로 한다 (제안). 별도 JWT 라이브러리 없이 만료 검증기(`JwtTimestampValidator`)에 주입한 `Clock`을 넣을 수 있다 (9장 R10) |
 | 실시간 | Spring WebSocket + STOMP, Simple Broker | SockJS는 쓰지 않는다 (제안). k6와 브라우저 모두 순수 WebSocket을 쓴다 |
-| API 문서 | springdoc-openapi (Boot 4 대응 라인) | REST만 문서화한다. STOMP 메시지는 이 문서 7장과 1주차 메시지 스키마 문서에 둔다 |
+| API 문서 | springdoc-openapi (Boot 4 대응 라인) | REST만 문서화한다. 계약의 원본은 [API.md](API.md)이고, 생성된 OpenAPI가 그와 같은지 계약 테스트로 본다. STOMP 메시지는 [EVENTS.md](EVENTS.md)에 둔다 |
 | 테스트 | JUnit 5 (Jupiter), Testcontainers (MySQL) | H2는 쓰지 않는다 (CHALLENGES 2장: InnoDB 락 동작이 다르다) |
 | 관측 | Micrometer, Prometheus, Grafana | PRD 9.5 |
 | 프론트 | React, Vite, TypeScript, Tailwind CSS, TanStack Query, @stomp/stompjs | |
@@ -186,13 +187,13 @@ receipt:<상관 ID>
 입찰 응답(REST)과 그 입찰의 브로드캐스트(STOMP)는 다른 연결로 오므로 어느 쪽이 먼저 도착할지 모른다. 그래서 두 채널의 역할을 나눈다.
 
 - **레인 화면 상태(현재가, 마감 시각 등)는 브로드캐스트와 스냅샷으로만 바꾼다.** 입찰 응답으로는 바꾸지 않는다. 화면 상태의 출처가 하나라서 시퀀스 규칙(7.4)이 깨지지 않는다.
-- **입찰 응답은 "내 입찰"의 결과만 바꾼다.** 성공 응답에는 이 입찰의 `bidId`와, 이 입찰이 만든 `BID_ACCEPTED` 이벤트의 `epoch`·`seq`를 넣는다 (제안).
+- **입찰 응답은 "내 입찰"의 결과만 바꾼다.** 성공 응답에는 이 입찰의 `bidId`와, 이 입찰이 만든 `BID_ACCEPTED` 이벤트의 `epoch`·`seq`를 넣는다 (API.md 5.1).
 - 클라이언트는 "내가 최고 입찰자"를 상태로 저장하지 않고, 레인 상태가 바뀔 때마다 계산한다 (결정됨 (리뷰)).
   - 레인 상태의 `state.lot.lastBidId`(마지막으로 수락된 입찰의 ID, 7.2)가 내 성공 응답의 `bidId`와 같으면 내가 최고 입찰자다. 뒤에 다른 입찰이 수락되면 `lastBidId`가 바뀌므로 표시도 저절로 꺼진다.
   - 성공 응답을 받았는데 같은 epoch에서 아직 그 `seq`까지 반영하지 못했으면, 반영할 때까지 "내가 최고 입찰자"로 먼저 표시한다. 응답보다 앞선 시점의 스냅샷이 늦게 도착해도 반영한 `seq`가 응답의 `seq`보다 작으므로 표시가 꺼지지 않는다.
   - 내 `bidId`를 모르면(페이지를 새로 연 경우) 스냅샷의 `me.isHighestBidder`를 쓴다.
   - `bidId`는 입찰 행의 ID이고 회원 식별자가 아니다 (PRD 9.6). `lastBidId`는 DB에 남으므로(`lot.last_bid_id`) 재시작으로 epoch가 바뀌어도 비교가 유효하다.
-- 409 응답에도 서버의 현재 `epoch`·`seq`를 넣는다 (제안). 초당 1,000건 중 대부분이 409라서, 409를 받을 때마다 스냅샷을 다시 부르면 스냅샷 요청이 입찰 수만큼 생긴다. 클라이언트는 409를 받아도 스냅샷을 부르지 않고 응답의 `seq`까지 브로드캐스트가 도착하기를 기다린다. 기다림에 시간 제한은 두지 않는다. 그 사이 갭이 보이면 7.6의 재동기화가 처리하고, 브로드캐스트를 잃었다면 다음 레인 비컨(7.4)이 알려 준다.
+- 409 응답(그리고 422의 `LANE_NOT_RUNNING`·`LOT_NOT_BIDDING`)에도 서버의 현재 `epoch`·`seq`를 `error.lane`으로 넣는다 (API.md 5.1). 초당 1,000건 중 대부분이 409라서, 409를 받을 때마다 스냅샷을 다시 부르면 스냅샷 요청이 입찰 수만큼 생긴다. 클라이언트는 409를 받아도 스냅샷을 부르지 않고 응답의 `seq`까지 브로드캐스트가 도착하기를 기다린다. 기다림에 시간 제한은 두지 않는다. 그 사이 갭이 보이면 7.6의 재동기화가 처리하고, 브로드캐스트를 잃었다면 다음 레인 비컨(7.4)이 알려 준다.
 
 ### 2.6 참고: SSE
 
@@ -200,25 +201,29 @@ STOMP 연결의 방향이 서버 → 클라이언트뿐이므로 SSE로도 같�
 
 ### 2.7 REST 엔드포인트 초안
 
-PRD 기능에 대응하는 것만 둔다. 요청·응답 형식은 1주차 OpenAPI에서 정한다.
+PRD 기능에 대응하는 것만 둔다. 요청·응답 형식과 에러 코드는 [API.md](API.md)에 정했다. 0.3에서 계약을 쓰며 더한 것은 근거에 "API"로 표시했다.
 
 | 영역 | 메서드와 경로 | 권한 | 근거 |
 |---|---|---|---|
 | 인증 | `POST /api/auth/signup` | 비로그인 | M-01. 역할은 언제나 `USER`다 (AC-01-4) |
 | | `POST /api/auth/login` | 비로그인 | M-01 |
 | | `POST /api/auth/refresh` | Refresh Token | M-01 |
+| | `POST /api/auth/logout` | Refresh Token | M-01, AC-01-5, PRD OQ-45. Refresh Token을 폐기하고 쿠키를 지운다 (11장) |
+| | `GET /api/me` | 로그인 | API 3.5. 닉네임, 역할, 입찰 정지 여부, 경고 수. 입찰 정지는 로그인 중에도 바뀐다 (S-02) |
 | 출품 | `POST /api/items` (multipart) | USER | M-02 |
 | | `GET /api/me/items` | USER | U-02 |
 | | `POST /api/items/{itemId}/relist` | USER (본인) | S-05 |
-| 검수 | `GET /api/admin/items?reviewStatus=` | ADMIN | M-03, A-01, A-03 (승인된 출품물 목록) |
+| 검수 | `GET /api/admin/items?stage=` | ADMIN | M-03, A-01(`stage=PENDING_REVIEW`), A-03(`stage=APPROVED`, 편성할 수 있는 출품물). 검수 상태가 아니라 진행 단계로 거른다 (4.4, PRD OQ-46) |
+| | `GET /api/admin/items/{itemId}` | ADMIN | A-01 검수 상세. API |
 | | `POST /api/admin/items/{itemId}/approve`, `.../reject` | ADMIN | M-03 |
 | 회차 (공개) | `GET /api/sessions?status=` | 모두 | P-01 |
 | | `GET /api/sessions/{sessionId}` | 모두 | P-03 (레인 스냅샷 묶음, 예정 회차의 편성 미리보기) |
 | | `GET /api/lanes/{laneId}/snapshot` | 모두 | M-11 재동기화 |
 | | `GET /api/lots/{lotId}` | 모두 | P-03 Lot 상세 모달 |
 | | `GET /api/images/{storageKey}` | 모두 | M-02 이미지 표시 |
-| 회차 (운영) | `POST /api/admin/sessions` | ADMIN | M-04 |
-| | `PATCH /api/admin/sessions/{sessionId}` | ADMIN | AC-04-4 (예정 시각 변경), 시간 파라미터 [OQ-14] |
+| 회차 (운영) | `POST /api/admin/sessions` | ADMIN | M-04. 지난 예정 시각은 거절한다 (5.7, PRD OQ-48) |
+| | `GET /api/admin/sessions/{sessionId}` | ADMIN | A-02, A-03. 레인별 편성에 `itemId`를 담는다. 편성을 고치려면 필요하다. API |
+| | `PATCH /api/admin/sessions/{sessionId}` | ADMIN | AC-04-4 (예정 시각 변경, 지난 시각은 거절, AC-04-6), 시간 파라미터 [OQ-14] |
 | | `PUT /api/admin/sessions/{sessionId}/lanes/{laneNo}/lots` | ADMIN | M-05. 레인 하나의 Lot 순서 목록 전체를 바꾼다 |
 | | `POST /api/admin/sessions/{sessionId}/start` | ADMIN | M-06 "지금 시작" |
 | | `POST /api/admin/sessions/{sessionId}/pause`, `.../resume` | ADMIN | M-13 회차 일괄 |
@@ -464,6 +469,17 @@ CREATE TABLE item_image (
 ```
 
 - 출품물 상태는 검수 상태(검수 대기, 승인, 반려)만 둔다. 경매 결과는 그 Item의 Lot들에서 읽는다. 같은 Item을 동시에 여러 Lot에 편성하는 것을 막을지는 [OQ-28]이다 (4.6).
+- **진행 단계(`stage`)는 저장하지 않고 계산한다** (PRD OQ-46). 검수 상태는 낙찰·유찰 뒤에도 `APPROVED`로 남으므로, 검수 상태만으로는 "편성할 수 있는가"와 내 출품 목록(U-02)의 표시를 정할 수 없다.
+
+  | `stage` | 조건 |
+  |---|---|
+  | `PENDING_REVIEW`, `REJECTED` | `review_status`가 그 값 |
+  | `APPROVED` | `review_status = 'APPROVED'`이고, 이번 승인 뒤의 Lot이 없다 |
+  | `SCHEDULED` / `ON_AUCTION` / `SOLD` / `UNSOLD` | 이번 승인 뒤의 가장 최근 Lot이 `PENDING` / `BIDDING` / `SOLD` / `UNSOLD` |
+
+  - "이번 승인 뒤의 Lot" = `lot.created_at ≥ item.reviewed_at`인 Lot이다. 재출품(S-05)하면 `review_status`가 `PENDING_REVIEW`로 돌아가고, 다시 승인하면 `reviewed_at`이 새 시각이 되므로 지난 유찰 Lot이 범위에서 빠진다. 편성에서 빠진 Lot은 지워지므로(V4 아래) 단계도 `APPROVED`로 돌아온다.
+  - 컬럼을 두지 않는 이유: 단계는 Lot 전이(시작, 마감)마다 바뀐다. 컬럼으로 두면 레인 트랜잭션이 `item`까지 갱신해야 하고, 쓰기 규칙 4(자기 도메인 테이블에만 쓴다, 3.3)의 예외가 하나 더 생긴다. 조회는 `idx_lot_item`으로 Item마다 Lot 몇 개를 읽는 것이라 비용이 작다.
+  - 계약 표현은 API.md 6.5.
 
 #### V3__bid_policy.sql
 
@@ -616,7 +632,8 @@ CREATE TABLE lane_transition (
 
 - `lot`의 `current_price`, `highest_bidder_id`, `bid_count`, `last_bid_id`, `deadline_at`은 입찰 이력에서 계산할 수 있는 값을 Lot 행에 함께 둔 것이다. 수락된 입찰마다 입찰 INSERT와 같은 트랜잭션의 UPDATE 1번으로 갱신한다. 이 값들을 두는 이유는 세 가지다. (1) 재시작 복구(M-17)가 Lot 행만 읽어서 끝난다. (2) 실험 ①의 DB 락 후보(CH-04 A·B)는 이 행을 조건부로 갱신해야 같은 조건에서 비교된다. (3) 재계산 스크립트가 저장된 값과 다시 계산한 값을 비교해 볼 수 있다.
 - `lane.paused_remaining_ms`와 `pause_cause`는 재시작 복구가 정지 상태를 되살리는 데 쓴다 (5.5.9, 결정됨 (리뷰)). 레인이 입찰 단계인지 간격 단계인지는 컬럼이 아니라 Lot 상태로 안다. `BIDDING` Lot이 있으면 입찰 단계, 없으면 간격 단계다. 정지 중에 강제 종료한 레인도 간격 단계가 된다 (5.4). `lane_transition`은 이력이고 복구는 읽지 않는다.
-- 편성(M-05)은 `SCHEDULED` 동안에만 바뀐다. 그 동안 Lot에는 입찰도 이력도 없으므로, 레인의 Lot 목록을 지우고 새 순서로 다시 넣는다. `uk_lot_lane_seq`와 충돌하지 않는다.
+- 편성(M-05)은 `SCHEDULED` 동안에만 바뀐다. 그 동안 Lot에는 입찰도 이력도 없으므로, 레인의 Lot 목록을 지우고 새 순서로 다시 넣는다. `uk_lot_lane_seq`와 충돌하지 않는다. 그래서 편성을 바꿀 때마다 `lotId`가 새로 생긴다 (API.md 7.2).
+- 편성 트랜잭션은 넣을 Item의 단계(4.4 V2 아래)가 `APPROVED`이거나, 지금 이 레인에 편성된 `SCHEDULED`인지 검사한다. 낙찰·경매 중·유찰 Item은 `422 ITEM_NOT_ASSIGNABLE`로 거절한다 (PRD OQ-46, AC-05-4). 다른 회차·레인에 편성된 Item은 [OQ-28]이 정해질 때까지 막지 않는다 (4.6).
 
 #### V5__bid.sql
 
@@ -758,7 +775,8 @@ CREATE TABLE notification (
 | 로그인 | `uk_member_email` |
 | 토큰 재발급 | `uk_refresh_token_hash` |
 | 내 출품 목록 (U-02) | `idx_item_seller` |
-| 검수 대기 목록, 편성 가능 목록 (A-01, A-03) | `idx_item_review_status` |
+| 검수 대기 목록 (A-01) | `idx_item_review_status` |
+| 편성할 수 있는 출품물 목록 (A-03, `stage=APPROVED`) | `idx_item_review_status`로 승인된 Item을 고르고, Item마다 `idx_lot_item`으로 이번 승인 뒤의 Lot이 없는지 본다 (`NOT EXISTS`) |
 | 홈 회차 목록, 자동 시작 대상 (P-01, M-06) | `idx_session_status_start` |
 | 재시작 복구 대상 레인 (M-17) | `idx_lane_status` |
 | 레인의 Lot 순서 (편성, 진행, 복구) | `uk_lot_lane_seq` |
@@ -847,7 +865,7 @@ CREATE TABLE notification (
 - 마감 확인 세대는 확인을 새로 예약하는 경로(재개, 6.4의 재구성)에서만 올린다. 입찰로 마감이 늘어날 때는 올리지 않는다. 원래 확인이 새 마감에 같은 세대로 다시 예약되기 때문이다 (CH-03 후보 B). 간격 세대는 간격을 새로 잡을 때마다 올린다. 낡은 세대의 명령은 다시 예약하지 않고 버리므로, 정지 전에 예약한 `EndGap`이 재개 뒤에 울려도 아무것도 바꾸지 않는다 (AC-13-4).
 
 - 명령 타입은 `sealed interface LaneCommand`, 이벤트 타입은 `sealed interface LaneEvent`다 (Java 21). `switch`가 모든 경우를 다루지 않으면 컴파일 오류가 나므로, 명령을 추가할 때 처리를 빠뜨리지 않는다.
-- 허용되지 않은 전이(예: FINISHED 레인에 재개)는 상태를 바꾸지 않고 거절로 응답한다. 운영자 API 에러 코드는 1주차 OpenAPI에서 정한다 (PRD 6.1).
+- 허용되지 않은 전이(예: FINISHED 레인에 재개)는 상태를 바꾸지 않고 거절로 응답한다. 운영자 API 에러 코드는 API.md 7.3에 정했다 (`LANE_NOT_RUNNING`, `LANE_NOT_PAUSED`, `LOT_NOT_BIDDING`, `SESSION_NOT_RUNNING` 등). 거절 응답에도 `error.lane`(epoch, seq)을 넣는다.
 
 ### 5.4 레인 런타임 단계
 
@@ -1065,6 +1083,7 @@ CH-02의 무작위 이벤트 시퀀스 테스트와 CH-03의 시간 테스트가
 - 판단은 `engine.session.SessionAutoStarter`가 한다. 순수 Java이고 `Clock`과 `TimerScheduler`를 주입받는다 (PRD 9.7). Spring 쪽은 부팅할 때, 회차를 만들 때, 예정 시각을 바꿀 때 이것을 부르기만 한다.
 - 잠정안 (CH-02 (다)): 회차마다 예정 시각에 타이머를 하나 건다.
   - 부팅할 때는 `SCHEDULED`이고 예정 시각이 부팅 시각보다 뒤인 회차만 등록한다. "부팅 시각 이전의 예정 시각 = 놓친 것"이라는 기준은 [OQ-38]의 후보 중 하나다.
+  - 회차를 만들거나 예정 시각을 바꿀 때 예정 시각이 `clock.instant()` 이전이면 거절한다 (`422 SCHEDULED_START_IN_PAST`, PRD OQ-48). 그래서 지난 예정 시각을 가진 `SCHEDULED` 회차는 서버가 꺼져 있었거나 시작 조건을 채우지 못한 경우에만 생긴다. 검사와 타이머 등록 사이에 예정 시각이 지나는 경계(현재 시각 직후의 값)는 등록 시점에 바로 실행되도록 0 지연으로 예약한다 (제안).
   - 예정 시각을 바꾸면(AC-04-4) 그 회차의 세대 번호를 올리고 새 시각에 다시 등록한다. 낡은 타이머는 세대가 맞지 않아 무시된다. CH-03 후보 B와 같은 원리다.
   - 타이머가 울리면 `SessionStarter.start(id, AUTO)`를 부른다. 실제로 시작할지는 5.5.1의 조건부 갱신이 정한다. 그래서 수동 시작과 겹쳐도 한 번만 시작한다.
 - 타이머는 단조 시계로 기다리고 판단은 `Clock`으로 하므로, 서버 시계가 점프하면 둘이 어긋난다 [OQ-35].
@@ -1188,9 +1207,11 @@ sequenceDiagram
 - 마감 같은 다른 전이가 실패해도 같은 방식으로 재구성하고, 마감 확인 세대를 올려 확인 이벤트를 다시 예약한다.
 - 재구성도 실패하면(DB 무응답) 5.8의 지표와 health로 드러난다. 재구성 대신 레인을 자동으로 정지할지는 [OQ-32] (CH-05 후보 A2)다.
 
-### 6.5 응답 형식 초안
+### 6.5 응답 형식
 
-성공 (`200`, 제안):
+계약은 API.md 5.1이다. 설계 설명에 필요한 만큼만 옮겼다.
+
+성공 (`200`):
 
 ```json
 {
@@ -1207,26 +1228,32 @@ sequenceDiagram
 
 같은 키와 같은 본문으로 재전송하면 저장해 둔 이 본문을 그대로 돌려준다. 입찰 응답에는 `serverTime`이 없다 (결정됨 (리뷰), 7.7). 있으면 재생 응답이 몇 초 전 시각을 그대로 내보내 클라이언트의 시계 오차 추정을 흐린다.
 
-거절 (형식은 1주차 OpenAPI에서 확정):
+거절. 모든 API의 에러 응답이 `{ "error": { … } }` 모양이다 (API.md 1.4). 0.2 초안은 `code`·`message`·`lane`을 최상위에 두었다.
 
 ```json
 {
-  "code": "PRICE_CHANGED",
-  "message": "현재가가 바뀌었습니다.",
-  "lane": { "epoch": "9c41e07a5b3d2f18", "seq": 59 }
+  "error": {
+    "code": "PRICE_CHANGED",
+    "message": "현재가가 바뀌었습니다.",
+    "lane": { "epoch": "9c41e07a5b3d2f18", "seq": 59 }
+  }
 }
 ```
 
-`lane`은 레인 상태 때문에 거절된 경우(409, 그리고 422의 `LANE_NOT_RUNNING`·`LOT_NOT_BIDDING`)에만 넣는다 (2.5).
+`error.lane`은 레인 상태 때문에 거절된 경우(409, 그리고 422의 `LANE_NOT_RUNNING`·`LOT_NOT_BIDDING`)에만 넣는다 (2.5).
 
 결과 미정 (`500`, PRD OQ-44):
 
 ```json
 {
-  "code": "BID_RESULT_UNKNOWN",
-  "message": "입찰 결과를 확인하지 못했습니다. 같은 요청을 다시 보내 주세요."
+  "error": {
+    "code": "BID_RESULT_UNKNOWN",
+    "message": "입찰 결과를 확인하지 못했습니다. 같은 요청을 다시 보내 주세요."
+  }
 }
 ```
+
+- `global/error`(3.2)의 전역 예외 처리가 이 모양 하나로 응답한다. 입력 검증 실패(`400 INVALID_REQUEST`)는 `error.fields`에 필드별 사유를 담는다 (API.md 1.4).
 
 ### 6.6 멱등 처리
 
@@ -1296,6 +1323,8 @@ sequenceDiagram
     "laneStatus": "RUNNING",
     "position": 3,
     "remainingLots": 9,
+    "gapEndsAt": null,
+    "pauseCause": null,
     "lot": {
       "lotId": 345,
       "status": "BIDDING",
@@ -1321,6 +1350,8 @@ sequenceDiagram
 | `serverTime` | 메시지를 만든 서버 시각. 클라이언트 시계 오차를 추정하는 데 쓴다 (7.7) |
 | `state` | 이 이벤트를 반영한 뒤의 레인 동적 상태 전체. 메시지 하나만 받아도 동적 상태는 맞다 |
 | `state.position`, `state.remainingLots` | "현재 N번째 / 남은 Lot 수" (T3) |
+| `state.gapEndsAt` | 간격 종료 시각 (5.4의 `gapEndsAt`). 레인이 `RUNNING`이고 간격 단계일 때만 값이 있다. 간격 카운트다운(결과 표시, 다음 Lot 미리보기)을 그린다. 0.3에서 더함 (API.md 부록 B F-04) |
+| `state.pauseCause` | 정지 원인 (`lane.pause_cause`: `OPERATOR`, `SESSION_BULK`, `RECOVERY`). `PAUSED`일 때만 값이 있다. 재개 규칙이 원인마다 다르고(5.5.7), 콘솔이 일괄 재개 대상([OQ-13])을 보여 주려면 필요하다. 0.3에서 더함 (API.md 부록 B F-05) |
 | `state.lot.nextPrice` | 다음 호가. 서버가 회차에 고정된 정책으로 계산한다. 클라이언트는 호가 정책을 몰라도 되고 이 값을 `amount`에 그대로 넣는다. `INVALID_BID_AMOUNT`가 생길 길을 줄인다 |
 | `state.lot.bidCount` | 0이면 첫 입찰 대기 단계다 (OQ-01) |
 | `state.lot.lastBidId` | 마지막으로 수락된 입찰의 ID. 입찰이 없으면 `null`. 성공 응답의 `bidId`와 비교해 "내가 최고 입찰자"를 판정한다 (2.5). 입찰 행의 ID이고 회원 식별자가 아니다 (PRD 9.6). 결정됨 (리뷰) |
@@ -1329,6 +1360,7 @@ sequenceDiagram
 | `state.lot.highestBidder` | 마스킹한 닉네임. 회원 ID는 없다 (PRD 9.6) |
 | `state.lot.reserveNotMet` | "최저가 미달" 배지. 값을 정하는 조건은 [OQ-22]다. 최저 낙찰가 값은 어디에도 없다 |
 
+- 필드 전체와 레인 단계별 값은 EVENTS.md 3.2, 3.3이 원본이다.
 - 이름, 이미지 같은 Lot의 정적 정보는 매 메시지에 싣지 않고 `LOT_STARTED`와 스냅샷에만 싣는다 (잠정안, CH-07 후보 B의 일부). `LOT_STARTED`를 놓친 클라이언트는 `seq` 갭으로 감지해 스냅샷을 받으므로 정적 정보를 놓친 채로 남지 않는다.
 - 숫자 필드 이름을 줄이는 것 같은 추가 페이로드 축소는 실험 ②에서 측정한 뒤에 한다.
 
@@ -1338,9 +1370,9 @@ sequenceDiagram
 |---|---|---|---|
 | `LOT_STARTED` | 회차 시작 때 레인별 1번 Lot, 간격 뒤 다음 Lot | `lotInfo`: lotId, 이름, 대표 이미지 URL, 시작가 | T0, T1, T4 |
 | `BID_ACCEPTED` | 입찰 수락 | 없음 | 6.3, T2 |
-| `LOT_CLOSED` | 마감 판정, 강제 종료 | `result`: lotId, `SOLD`/`UNSOLD`, 최종가, 낙찰자(마스킹). 다음 Lot이 있으면 `nextLotInfo`(간격 중 미리보기) | M-10, M-14, T4 |
-| `LANE_PAUSED` | 정지 (레인 단위, 회차 일괄) | 없음 (`state.lot.pausedRemainingMs`) | M-13, T5 |
-| `LANE_RESUMED` | 재개 | 없음 (`state.lot.deadlineAt`이 새 마감) | T5, T6 |
+| `LOT_CLOSED` | 마감 판정, 강제 종료 | `result`: lotId, `SOLD`/`UNSOLD`, 최종가, 낙찰자(마스킹). 다음 Lot이 있으면 `nextLotInfo`(간격 중 미리보기). `state.gapEndsAt`이 간격 종료 시각 | M-10, M-14, T4 |
+| `LANE_PAUSED` | 정지 (레인 단위, 회차 일괄) | 없음 (`state.pauseCause`, `state.lot.pausedRemainingMs`) | M-13, T5 |
+| `LANE_RESUMED` | 재개 | 없음 (`state.lot.deadlineAt`이 새 마감, 간격 단계면 `state.gapEndsAt`) | T5, T6 |
 | `LANE_FINISHED` | 마지막 Lot 뒤 간격 종료, 정지 중 마지막 Lot 강제 종료 | 없음 | 6.1 |
 | `HEARTBEAT` | `RUNNING`·`PAUSED` 레인에서 비컨 주기(제안: 5초)마다 (7.4) | 상태 이벤트가 아니다. `type`, `laneId`, `epoch`, `seq`(마지막 상태 이벤트의 값, 올리지 않음), `serverTime`만 싣는다. `state`와 `occurredAt`은 없다 | M-11, OQ-37, AC-11-7 |
 
@@ -1402,11 +1434,15 @@ GET /api/lanes/{laneId}/snapshot
 - **비용**: 실행 중인 레인의 스냅샷은 DB를 읽지 않는다. 재연결 폭주(CH-08 시나리오 4) 때 DB가 먼저 무너지지 않게 하기 위해서다. `me.isHighestBidder`는 뷰에 들어 있는 최고 입찰자 ID(공개 직렬화에는 없다)를 요청자 ID와 비교해 만든다.
 - 실행 중이 아닌 레인(READY, 그리고 재시작으로 런타임이 없는 FINISHED)은 DB에서 만들고 `seq`는 0이다.
 
-**회차 상세** `GET /api/sessions/{sessionId}`: 관전 화면을 처음 열 때 쓴다. 회차 정보, 레인별 스냅샷(위와 같은 모양), 예정 회차면 레인별 편성 미리보기(P-03), 로그인 시 `me.myLotIds`(이 회차에서 내가 출품한 Lot 목록. 입찰 버튼 비활성화, AC-12-4)를 담는다. 레인 4개의 스냅샷을 요청 1개로 받으므로 재연결 폭주 때 요청 수가 1/4로 준다.
+**회차 상세** `GET /api/sessions/{sessionId}`: 관전 화면을 처음 열 때와 재연결할 때 쓴다. 회차 정보(시간 파라미터 포함), `serverTime`, 레인별 스냅샷(위와 같은 모양), 예정 회차면 레인별 편성 미리보기(P-03), 로그인 시 `me.myLotIds`(이 회차에서 내가 출품한 Lot 목록. 입찰 버튼 비활성화, AC-12-4)를 담는다. 레인 4개의 스냅샷을 요청 1개로 받으므로 재연결 폭주 때 요청 수가 1/4로 준다. 응답 전체는 API.md 4.2.
+
+- 예정 회차는 시작 전에 편성과 예정 시각이 바뀔 수 있는데 알리는 이벤트가 없다 (`READY` 레인은 비컨도 없다). 그래서 예정 회차 화면은 이 API를 주기적으로 다시 읽는다 (EVENTS.md 6.7). 예정 회차는 DB에서 응답을 만들지만, 관전자가 몰리는 것은 시작한 뒤라 부하가 작다.
 
 ### 7.6 클라이언트 동기화 절차
 
-PRD 9.4의 절차를 그대로 옮긴 것이다 (CH-08 후보 A2).
+PRD 9.4의 절차를 그대로 옮긴 것이다 (CH-08 후보 A2). 클라이언트 코드 수준의 원본은 EVENTS.md 6장이다.
+
+**첫 진입** (0.3에서 더함): 아래 `connect()`는 구독할 `laneId`를 이미 안다고 본다. 관전 화면에 처음 들어올 때는 모르므로, 회차 상세를 한 번 먼저 불러 `laneId`를 알아내고 화면을 그린 뒤 `connect()`를 한다. 회차 상세를 두 번 부르는 셈이고, 상태의 기준은 구독한 뒤에 받은 두 번째 응답이다. 재연결 때는 `laneId`를 알므로 바로 `connect()`부터 한다 (EVENTS.md 6.1).
 
 ```
 connect():
@@ -1452,6 +1488,8 @@ onDisconnect():
 ### 7.7 서버 시각 동기화와 카운트다운
 
 - 레인 메시지(비컨 포함)와 스냅샷에 `serverTime`이 있다. 마감은 절대 시각 `deadlineAt`이다 (C4).
+- 레인 구독이 없는 화면에도 시각 표본이 필요해서, 회차 목록(홈의 시작까지 남은 시간)·회차 상세·내 거래(결제 기한) 응답에도 `serverTime`을 넣는다 (0.3, API.md 4.1, 4.2, 6.2). 모두 처음 만들 때의 시각을 담는 응답이라 멱등 재생 문제가 없다.
+- 계약 문서는 B1의 기본 구현을 (제안)으로 적었다: 최근 60초 표본의 `serverTime − performance.now()` 최댓값을 오차로 쓴다 (EVENTS.md 7.3). CH-01 (나)는 여전히 미결이다. 측정으로 다른 후보를 고르면 그 절을 고친다.
 - 입찰 응답에는 `serverTime`이 없다 (결정됨 (리뷰)). 멱등 재생 응답은 처음 응답을 그대로 돌려주므로, 응답에 서버 시각이 있으면 재생할 때 몇 초 전 시각이 나가 오차 추정을 흐린다. 화면 상태도 입찰 응답으로 바꾸지 않으므로(2.5) 응답에 서버 시각이 필요 없다. 비컨이 5초마다 시각 표본을 주므로 표본이 모자라지도 않다.
 - 남은 시간 = `deadlineAt − (서버의 현재 시각 추정값)`. 추정 방식은 CH-01 (나)에서 정한다. 지금 계약은 후보 B1(오차 추정: `serverTime − 수신 시각`)과 B3(수신 시점부터 `deadlineAt − serverTime`을 셈)을 바꾸지 않고 지원한다. 후보 B2(왕복 보정)를 고르면 시간 동기 요청 경로가 하나 생긴다.
 - 카운트다운이 0이 되면 "마감 판정 중"으로 표시하고, `LOT_CLOSED`를 받기 전에는 결과를 보여주지 않는다 (C4, AC-12-6). 마감 메시지를 놓쳤는지는 시간이 아니라 비컨의 `seq`로 판단한다 (OQ-37). 마감 판정이 늦어지는 중이면 비컨의 `seq`가 반영한 `seq`와 같으므로 계속 기다린다.
@@ -1474,7 +1512,7 @@ onDisconnect():
 
 ### 7.9 개인 알림 (S-01)
 
-- 목적지는 `/user/queue/notifications`다. 메시지는 알림함 행과 같은 모양이다: `{ "id", "type", "payload", "createdAt" }`.
+- 목적지는 `/user/queue/notifications`다. 메시지는 알림함 행과 같은 모양이다: `{ "id", "type", "payload", "createdAt", "readAt" }`. 종류별 `payload` 필드는 EVENTS.md 4.2.
 - DB에 먼저 저장하고 전송한다. 사용자가 접속해 있지 않으면 전송은 버려지고 알림함(U-05)에 남는다 (PRD 9.4-4).
 - 종류: `OUTBID`, `WON`, `LOT_UNSOLD`(판매자), `PAYMENT_DUE_SOON`, `TRADE_CANCELED`, `REVIEW_RESULT`.
 - 사용자 목적지는 Principal 이름(회원 ID 문자열)으로 찾는다 (8장).
@@ -1639,7 +1677,9 @@ CH-12와 같다. 셋 다 확인되기 전에는 착수하지 않는다 (PRD C-03
 | 계정 | 비밀번호 유출 | BCrypt로 저장한다 (Spring Security `DelegatingPasswordEncoder`) | M-01 |
 | 토큰 | 탈취된 Access Token | 수명을 짧게 둔다 (제안: 15분). HTTPS와 WSS로만 오간다 | M-01 |
 | | Refresh Token 유출 | Refresh Token은 JWT가 아닌 256비트 무작위 값이고, DB에는 SHA-256 해시만 저장한다. 재발급할 때 새 값으로 바꾸고 이전 값을 폐기한다(회전). 폐기된 값이 다시 들어오면 `401`로 거절만 한다. 재사용을 감지해 그 회원의 토큰을 모두 폐기하는 것은 PRD 근거가 없어 넣지 않았다 (결정됨 (리뷰), 부록 B-15) | M-01, (가정) DB 저장 |
-| | XSS로 토큰 탈취 | Access Token은 메모리에만 둔다. Refresh Token은 `HttpOnly; Secure; SameSite=Strict` 쿠키에 두고 경로를 재발급 엔드포인트로 한정한다 (제안). 쿠키가 재발급 요청에만 실리므로 다른 API에는 CSRF 위험이 없다 | |
+| | 로그아웃 뒤 남은 토큰 | 로그아웃(`POST /api/auth/logout`)은 쿠키의 Refresh Token을 폐기하고(`refresh_token.revoked_at`) 쿠키를 지운다(`Max-Age=0`). 이미 발급된 Access Token은 만료(15분)까지 유효하다. 강제 무효화 목록은 두지 않는다 | M-01, AC-01-5, PRD OQ-45 |
+| | XSS로 토큰 탈취 | Access Token은 메모리에만 둔다. Refresh Token은 `HttpOnly; Secure; SameSite=Strict` 쿠키에 두고 경로를 `/api/auth`로 한정한다 (제안). 재발급과 로그아웃이 쿠키를 읽어야 하므로 0.2의 `/api/auth/refresh`에서 넓혔다. 쿠키는 `/api/auth/*` 요청에만 실리고, 그중 쿠키로 동작하는 것은 재발급과 로그아웃뿐이다. `SameSite=Strict`라 다른 사이트에서 이 둘을 부를 수 없다 | |
+| | 여러 탭의 재발급 경합 | 탭들이 같은 쿠키로 동시에 재발급하면 늦은 쪽은 이미 폐기된 값을 보내 `401`을 받는다. 서버에 유예 시간을 두지 않고, 클라이언트가 Web Locks API로 탭 사이에서 재발급을 하나씩 하고, 락을 얻은 뒤의 `401`은 한 번만 다시 시도한다 (API.md 1.3). 같은 브라우저 프로필의 탭은 쿠키와 락을 함께 쓰므로 이것으로 충분하다 | M-01 |
 | | 서명 키 유출 | HS256, 256비트 이상 무작위 키를 환경 변수로 넣는다. 저장소에 커밋하지 않는다 | |
 | 인가 | ADMIN의 입찰·출품 | 역할은 하나만 가진다. USER 전용 API는 `hasRole('USER')`이므로 ADMIN은 `403`이다 | AC-02-7, AC-09-9 |
 | | 권한 승격 | 가입 API는 역할 입력을 받지 않는다. ADMIN 계정은 시드로만 만들고(4.3), 승격 API는 없다 | AC-01-4 |
@@ -1660,7 +1700,7 @@ CH-12와 같다. 셋 다 확인되기 전에는 착수하지 않는다 (PRD C-03
 | | 운영자 조치 추적 | 모든 운영자 조치를 감사 로그에 남긴다 (S-03). 상태 변경과 같은 트랜잭션에서 쓴다 | 3.1 A4 |
 | 중복 처리 | 재전송, 더블 클릭 | 입찰과 결제 모두 멱등 키로 막는다 (6.6, CH-10) | 9.6 |
 
-PRD에 없어서 넣지 않은 보안 기능(로그인 시도 제한, 로그아웃 시 토큰 폐기, 이미지 메타데이터 제거)은 부록 B에 있다.
+PRD에 없어서 넣지 않은 보안 기능(로그인 시도 제한, 이미지 메타데이터 제거)은 부록 B에 있다. 로그아웃 시 토큰 폐기는 PRD 0.5(OQ-45)로 들어왔다.
 
 ---
 
@@ -1706,19 +1746,19 @@ PRD에 없어서 설계에 넣지 않았거나, 설계하려면 PRD의 판단이
 
 | # | 빈칸 | 이 문서의 처리 | 영향 |
 |---|---|---|---|
-| B-1 | 로그아웃 | API를 두지 않았다. 클라이언트가 토큰을 버리고, Refresh Token은 만료될 때까지 유효하다 | 공용 PC에서 로그아웃해도 Refresh Token이 남는다 (11장) |
+| B-1 | 로그아웃 | 해소: PRD 0.5의 OQ-45로 로그아웃 API를 두기로 했다 (2.7, 11장). Refresh Token이 `HttpOnly` 쿠키라 클라이언트가 버릴 수 없었다 | — |
 | B-2 | 로그인 시도 제한 | 넣지 않았다 | 비밀번호 무차별 대입 위험 |
-| B-3 | Access·Refresh Token 수명 | (제안) 값만 적었다 (11장) | 보안과 재연결 빈도 |
+| B-3 | Access·Refresh Token 수명 | (제안) 값만 적었다 (11장). 계약도 같은 값(Access 15분)이다 (API.md 1.3) | 보안과 재연결 빈도 |
 | B-4 | 회차 이름 | 컬럼이 없다. 홈 목록은 예정 시각과 상태로만 구분된다 | P-01 화면 |
-| B-5 | 닉네임 규칙 (길이, 중복 허용) | 길이만 (제안). 1글자 닉네임은 마스킹해도 그대로 보인다 | PRD 9.6 회원 식별 |
-| B-6 | 이미지 장수·용량·형식 상한, 메타데이터(EXIF 위치 정보) 제거 | 서버 설정 상한만 두었다. 메타데이터 제거는 넣지 않았다 | 저장 공간, 판매자 위치 노출 |
+| B-5 | 닉네임 규칙 (길이, 중복 허용) | 길이만 (제안). 계약은 2~20자다 (API.md 3.1). 2자 이상이라 마스킹이 의미를 가진다. 중복 허용은 미정 | PRD 9.6 회원 식별 |
+| B-6 | 이미지 장수·용량·형식 상한, 메타데이터(EXIF 위치 정보) 제거 | 계약에 (제안) 값을 적었다: 1~10장, 장당 10MB, JPEG·PNG·WebP (API.md 6.4). 폼이 미리 검사하려면 값이 있어야 했다. 메타데이터 제거는 넣지 않았다 | 저장 공간, 판매자 위치 노출 |
 | B-7 | 최저 낙찰가를 판매자 본인(U-02)과 운영자(A-01)에게 보여주는가 | PRD 6.3은 "화면 어디에도 노출하지 않는다", AC-02-6은 "판매자가 아닌 사용자에게"라고 한다. 이 문서는 공개 경로만 막았다 | 내 출품 목록, 검수 화면의 DTO |
 | B-8 | 결제 기한 길이가 회차 설정인가 앱 설정인가 | 앱 설정으로 두고 거래에 `payment_due_at`으로 확정했다. PRD 6.4 표는 회차 설정 아래에 두었고 A1은 시간 파라미터 3개만 회차별이라고 한다 | `auction_session` 컬럼 |
 | B-9 | 결제 기한 임박 알림을 언제 보내는가 | 정하지 않았다 | S-01, 만료 작업 |
 | B-10 | 마감 시각이 지났지만 아직 마감 확인이 처리되지 않은 Lot에 정지·강제 종료가 처리되면 | 시간 마감을 먼저 적용한다 (잠정안, 5.5.4). C3를 운영자 명령에도 똑같이 적용한 것이다 | 최고가 ≥ 최저 낙찰가인 Lot은 강제 종료를 눌렀어도 SOLD가 될 수 있다 (AC-14-1과 겹치는 경계) |
 | B-11 | 거절 응답의 보관 기간 | 성공 기록만 24시간, 거절 기록은 짧게(예: 1분) 두는 것을 제안했다 (6.6) | PRD 6.3 조건 2의 "키는 24시간 보관" 문구 |
 | B-12 | 결과를 모르는 실패의 입찰 응답 (5xx) | 해소: PRD 0.4의 OQ-44로 `500 BID_RESULT_UNKNOWN`을 정했다. 결과 대기 상한 초과도 같은 코드다 (6.4, 6.6) | PRD 6.3 표, 클라이언트 재전송 규칙 |
-| B-13 | `INVALID_REQUEST`, `LANE_NOT_FOUND`의 검증 순서 | 인증 다음, 멱등 확인 앞으로 적었다 (6.2) | AC-09-3 |
-| B-14 | 운영자 명령의 응답 (회차 일괄 정지에서 레인별 결과 등) | 레인별 결과를 모아 돌려준다고만 적었다. 운영자 API 에러 코드는 1주차 OpenAPI에서 정한다 (PRD 6.1) | A-04 화면 |
+| B-13 | `INVALID_REQUEST`, `LANE_NOT_FOUND`의 검증 순서 | 해소: 인증 다음, 멱등 확인 앞이다 (6.2). 계약에 이 순서로 적었다 (API.md 5.1) | — |
+| B-14 | 운영자 명령의 응답 (회차 일괄 정지에서 레인별 결과 등) | 해소: 레인별 결과(`APPLIED`/`SKIPPED`)와 epoch·seq, 운영자 API 에러 코드를 계약에 정했다 (API.md 7.3, 9장) | — |
 | B-15 | Refresh Token 재사용 감지 (폐기된 값이 다시 오면 그 회원의 토큰 전체 폐기) | 넣지 않았다. 회전만 하고 폐기된 값은 `401`로 거절한다 (11장) | 탈취된 Refresh Token이 먼저 쓰이면 정상 사용자의 다음 재발급이 실패할 뿐, 서버는 탈취를 알아채지 못한다 |
 | B-16 | 재시작 전에 운영자가 정지해 둔 레인의 재개 규칙 | 해소: PRD 0.4의 OQ-43으로 T5를 따르기로 했다 (5.5.7, 5.5.9) | `lane` 정지 컬럼 |
