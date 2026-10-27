@@ -9,7 +9,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration(proxyBeanMethods = false)
@@ -18,10 +18,9 @@ import org.springframework.security.web.SecurityFilterChain;
 @SecurityScheme(name = "bearerAuth", type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT")
 public class SecurityConfig {
     @Bean
-    SecurityFilterChain applicationSecurity(HttpSecurity http, SecurityErrorHandler errors) throws Exception {
-        var converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(jwt -> java.util.List.of(
-                new SimpleGrantedAuthority("ROLE_" + jwt.getClaimAsString("role"))));
+    SecurityFilterChain applicationSecurity(HttpSecurity http, SecurityErrorHandler errors,
+            JwtAuthenticationConverter converter) throws Exception {
+        var bearerTokens = new DefaultBearerTokenResolver();
         return http.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(c -> c.disable()) // JSON + bearer APIs; Refresh cookie is SameSite=Strict.
                 .formLogin(f -> f.disable()).httpBasic(b -> b.disable()).logout(l -> l.disable())
@@ -37,7 +36,11 @@ public class SecurityConfig {
                         // Only management context exposes health; its port remains loopback-only.
                         .anyRequest().permitAll())
                 .exceptionHandling(e -> e.authenticationEntryPoint(errors).accessDeniedHandler(errors))
-                .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(converter))
+                .oauth2ResourceServer(o -> o
+                        // /ws is anonymous at HTTP level; only STOMP CONNECT may establish identity.
+                        .bearerTokenResolver(request -> "/ws".equals(request.getServletPath())
+                                ? null : bearerTokens.resolve(request))
+                        .jwt(j -> j.jwtAuthenticationConverter(converter))
                         .authenticationEntryPoint(errors).accessDeniedHandler(errors))
                 .build();
     }

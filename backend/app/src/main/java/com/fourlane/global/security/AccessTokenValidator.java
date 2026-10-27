@@ -6,7 +6,7 @@ import java.util.Set;
 import org.springframework.security.oauth2.core.*;
 import org.springframework.security.oauth2.jwt.Jwt;
 
-/** One validation path for REST and the future M1-02 CONNECT interceptor. */
+/** One validation path for REST and STOMP CONNECT. */
 public final class AccessTokenValidator implements OAuth2TokenValidator<Jwt> {
     public static final String ISSUER = "four-lane-auction";
     public static final String AUDIENCE = "four-lane-auction-api";
