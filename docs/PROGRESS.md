@@ -1,5 +1,121 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-02 STOMP 연결 인증
+
+- 작업일: 2026-10-27 (Asia/Seoul).
+- 상태: **완료 (M1-02 범위, 아래 수용 기준과 실제 실행 증거 기준)**. 원격 push·PR·CI는 실행하지 않았다.
+- 원본: TASKS 0장·M1-02·9장, PRD 2.2·M-11·AC-11-1/6·OQ-39·9.4/9.6, API 1.3·3.3/3.4, EVENTS 1장, ARCH 8장·R10, CH-08. TASKS 9장에 이 작업이 새로 정할 미결 OQ·B는 없고 OQ-39는 이미 결정되어 있다.
+- 시작 SHA: `3e254b31e14ecc5c133cb2be4010755f0d0a88c8`. fetch 후 dev=origin/dev, clean 확인. 선행 M1-01 PR #4의 머지와 ancestry 확인 후 `feature/M1-02-stomp-auth` 생성. develop 브랜치는 없으며 로컬 dev의 upstream은 origin/dev다.
+- 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction`, 별도 worktree 없음.
+- 승인: 사용자가 **권장안 A로 구현·검증·기록·로컬 커밋까지** 명시 승인했다. REST의 Principal 변환기를 공용 빈으로 추출해 STOMP와 공유한다. 별도 생성 방식은 역할 변환 중복 때문에 선택하지 않았다. push·PR 생성은 별도 승인이다.
+- 결정 기록: [ADR-007](adr/ADR-007-M1-02-stomp-auth.md). ADR-003·ADR-006의 M1-02 후속 항목을 처리 완료로 표시했다. 기존 OQ-39·TASKS 0.2·ADR을 따랐으며 새 제품 규칙과 CHALLENGES 미결 후보는 선택하지 않았다.
+- 계약·의존성·스키마: API 0.4, EVENTS 0.3 그대로. ERROR 값은 구현 전에 EVENTS 1.3과 ARCH 8.2의 TOKEN_EXPIRED·TOKEN_INVALID가 같음을 확인했다. 새 의존성·버전 변경·Flyway 추가가 없고 V1~V5는 변경하지 않았다. REST 변경이 없어 GEN 단계는 없다.
+- 로컬 커밋: `652addd` BE, `208f95a` FE. 이 기록과 ADR·후속 표시는 마지막 docs 커밋으로 묶는다.
+
+### 승인한 구현과 경계
+
+- REST와 CONNECT가 같은 JwtDecoder·Clock·JwtAuthenticationConverter를 쓴다. Principal 이름은 회원 ID, 역할은 ROLE_USER·ROLE_ADMIN이다. Security 7.1의 FACTOR_BEARER 권한도 두 경로에 동일하게 적용된다.
+- Authorization 없는 CONNECT는 익명, 빈 값·잘못된 Bearer·중복 헤더·서명/claim 오류는 TOKEN_INVALID, 검증된 만료는 TOKEN_EXPIRED다. ERROR 뒤 연결을 종료한다. Authorization은 디코딩 전에 브로커 헤더에서 제거하고 Decoder 예외 원문은 거절 예외에 넣지 않는다.
+- HTTP Upgrade에서 신원을 받지 않도록 `/ws`만 HTTP Bearer 추출을 생략한다. 다른 공개 REST의 잘못된 토큰은 여전히 401이다. 숫자 레인 토픽은 공개, 개인 큐는 인증 필요, 직접 큐·허용 목록 밖·SEND 거절은 유지한다. 서버는 ADMIN의 개인 큐 구독도 허용한다.
+- 연결 중 만료는 재검증·종료하지 않는다. 새 CONNECT와 REST는 같은 서버 Clock으로 검증한다. 토큰이 갱신되어도 같은 회원의 기존 연결은 유지하며 로그인·로그아웃은 실제 소켓 종료 후 새 신원으로 연결한다.
+- 프론트는 accessTokenExpiresAt을 메모리에 보관하고 JWT 본문을 해석하지 않는다. beforeConnect에서 최신 토큰과 만료 60초 전 여부를 확인하고 기존 재발급 Promise·Web Locks 경로를 사용한다. 거절된 같은 토큰의 재연결을 막고 복구 실패 시 익명으로 전환한다. 늦은 응답은 이전 신원을 복원하지 못한다.
+- USER는 앱에서 연결과 개인 큐 구독을 유지한다. 홈의 익명·ADMIN 연결은 기존 진단 예외이며 관전/제어 화면 기준의 수명 정리는 M1-08이다. 알림 생성·저장·표시는 M3-06이다. 테스트 메시지는 src/test에서만 발행한다.
+
+### 단계별 실제 실행 증거
+
+| 단계 | 결과와 실제 실행 | 증거 |
+|---|---|---|
+| BE 최종 | Corretto 21.0.10에서 `./gradlew.bat clean build` 성공. 14 actionable tasks 모두 실행, verifyTimeSources 운영 55파일·위반 0 | `output/m1-02/backend-clean-build.log` |
+| JUnit | UTC test 119회 + 별도 JVM 서울 testSeoul 119회 = 총 238회. 같은 119개를 두 JVM에서 실행했고 각 failures/errors/skipped 0 | `output/m1-02/test-summary.md`, `output/m1-02/test-results/test/*.xml`, `output/m1-02/test-results/testSeoul/*.xml` |
+| 실제 STOMP | JVM마다 신규 실제 WebSocketStompClient 12회, 인터셉터 단위 17회. 유효 USER/ADMIN, 익명, 만료 정각, 위조·형식 오류, ERROR 값·종료, 실제 메시지 수신 확인 | StompAuthenticationIntegrationTest, StompAuthChannelInterceptorTest |
+| 동시 전달 | 두 회원을 동시에 연결한 뒤 두 작업 스레드가 CountDownLatch로 출발하는 개인 메시지 전송을 200라운드 반복. 각 회원이 본인 메시지만 수신. JVM마다 수행해 합계 400라운드·800메시지 | concurrentMembersReceiveOnlyOwnMessages. 연결은 JVM마다 두 개이며 연결 200회를 뜻하지 않음 |
+| 시간 | 2020년 MutableClock으로 만료 1ms 전 허용·정각 거절. 연결 후 16분 이동해 기존 개인 큐 메시지와 새 레인 구독 수신, 같은 토큰의 새 CONNECT 거절 | expiredConnectReturnsTokenExpiredAtExactBoundary, connectedSubscriptionSurvivesTokenExpiry. 실제 시간 대기 없음 |
+| curl | 최신 BE bootRun에서 공개 조회 200·필수 값 누락 400·가입 201·로그인/me 200·공개 API의 잘못된 Bearer 401·health UP·Upgrade 101 | `output/m1-02/curl-checks.json`. Upgrade만으로 STOMP 성공을 판정하지 않음 |
+| FE 게이트·최종 | lint, typecheck, build 모두 성공. 수정 후 최종 명령을 다시 실행 | `output/m1-02/final-lint.log`, `final-typecheck.log`, `final-frontend-build.log` |
+| 범위 보존 | FE 진입 후 backend diff 0. API·EVENTS·의존성 파일·Flyway가 시작 버전과 동일 | Git diff 확인. GEN 생략 |
+| 민감값 | 실제 로컬 비밀번호·JWT 키·curl Access·Refresh 값 4개를 추적 텍스트와 M1-02 명령/앱 로그에서 검색해 일치 0 | `output/m1-02/credential-scan.json`. 기본 실행 로그와 검색한 값의 범위 |
+
+기존 CI 리포트 검증기도 PASS다. 표의 MySQL executed 35는 검증기가 원래 필수로 지정한 Schema/Session 두 클래스의 수다. 신규 STOMP 통합 클래스도 실제 MySQL Testcontainers 기반의 전체 앱을 띄우지만 JWT 신원 검증 자체는 DB 조회를 하지 않는다. engine은 도메인 코드가 없어 test NO-SOURCE이며 엔진 기능 검증을 뜻하지 않는다.
+
+### 통합 화면 검증과 재현 중 수정
+
+실제 headed Chrome, bootRun, Vite로 실행했다. 프레임 관찰은 명령·Authorization 유무·목적지·오류 코드만 기록했고 토큰 문자열은 증거 JSON에 넣지 않았다.
+
+| 시나리오 | 판정과 확인 | 로컬 증거 |
+|---|---|---|
+| 익명 → 로그인 → 로그아웃 | PASS. 익명 CONNECT에 헤더 없음, 로그인 CONNECT에 Bearer와 user-name, 개인 큐 SUBSCRIBE. 배지는 인증 연결·익명 연결로 전환 | `output/playwright/m1-02/basic.json` |
+| USER 화면 이동·정상 재발급 | PASS. 내 정보 이동에도 소켓 유지, 실제 Refresh 200과 토큰 변경 후에도 소켓 수 불변 | basic.json |
+| 반복 신원 전환 | PASS. 로그인·로그아웃 10회, 소켓 최대 1개·uncaught JS 예외 0 | stress.json |
+| 실제 인증 거절 후 복구 | PASS. 로컬 JWT 키를 바꿔 서버 재시작 → 구 토큰 CONNECT에 실제 TOKEN_INVALID → Refresh 200 한 번 → 새 인증 연결·개인 큐 재구독 | key-recovery.json |
+| 재발급 실패 | PASS. 별도 실제 logout 요청으로 Refresh를 폐기하고 키 변경 재시작 → TOKEN_INVALID → Refresh 401 두 번(API 1.3 재시도 포함) → 비로그인, 홈에서 헤더 없는 CONNECT | failure-prepare.json, failure-recovery.json |
+| 연결 전 사전 재발급 | PASS. 브라우저의 추정 시각만 16분 앞당겨 실제 소켓을 닫으면 새 CONNECT 전에 실제 Refresh 200. 서버 Clock은 그대로다. 서버 만료 판단은 위 MutableClock 테스트로 검증 | proactive-refresh.json |
+| 재발급 중 로그아웃 | PASS. beforeConnect의 실제 Refresh 200 응답 전달만 보류 → UI 로그아웃 → 익명 CONNECT → 원래 응답을 그대로 전달해도 익명 유지·logout 204·Refresh 쿠키 없음 | logout-during-refresh.json |
+| 화면·복구·저장소 | PASS. 데스크톱과 390×844 캡처를 열어 확인. 모바일 문서 폭 390, 로그인 새로고침 복구, 로그아웃 후 익명, local/sessionStorage 사용 0 | mobile-before.json, mobile-after.json, authenticated.png, anonymous.png, mobile-authenticated.png, mobile-anonymous.png |
+
+키 변경 복구 검증은 개인 화면에서 진행해 회차 목록의 30초 재조회가 먼저 토큰을 갱신하지 않게 했다. 서버 코드·응답 상태·본문을 합성하지 않았다. 응답 보류 테스트는 실제 backend 200의 전달만 지연한 것이다. 정상 초기 복구의 401과 의도한 서버 재시작 중 네트워크 오류는 브라우저 네트워크 콘솔에 남으며, uncaught JavaScript 예외 0과 구분한다.
+
+- 첫 컴파일에서 StompHeaders에 없는 getCommand 사용을 고쳤다. 역할 테스트는 Security 7.1의 FACTOR_BEARER와 순서 없는 권한 집합을 정확히 검사하도록 수정했다.
+- SessionSubscribeEvent 수신만으로 실제 브로커 등록 완료를 보장하지 못해 수신 테스트가 한 번 실패했다. 테스트 전용 ExecutorChannelInterceptor가 실제 구독 처리 후 완료 신호를 주도록 고쳤다. 테스트 삭제·skip·제품용 테스트 토픽 추가는 없다.
+- HTTP Principal 상속은 실제 회귀 테스트에서 발견했다. 핸드셰이크에서 null 반환만으로는 native session의 Principal 복원이 남아, `/ws` HTTP Bearer 추출을 생략하는 최종 구현으로 고쳤다.
+- Windows에서 실행 중인 bootRun이 engine JAR를 잡아 최초 clean이 실패했다. 이 checkout의 앱만 종료한 뒤 최종 clean build를 통과시켰다. 다른 checkout을 변경하거나 MySQL 볼륨을 삭제하지 않았다.
+- 최초 화면 검사에서 강제 deactivate가 실제 close 전에 완료되어 소켓 최대 수가 2였다. 정상 deactivate의 close 완료를 기다리도록 FE에서 수정하고 반복·복구·경합 검증을 다시 통과했다. 실패한 실행을 최종 PASS로 세지 않았다.
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 근거 |
+|---|---|---|
+| AC-11-1 익명 레인 허용·개인 큐 거절 | PASS | 실제 STOMP 레인 메시지 수신, 개인 큐의 SUBSCRIPTION_DENIED·종료. 기존 직접 큐·SEND 거절 테스트도 통과 |
+| AC-11-6 만료 CONNECT 거절·무토큰 익명 | PASS | 서버 Clock 만료 정각의 TOKEN_EXPIRED·종료, 무토큰 CONNECTED. 위조·형식 오류는 TOKEN_INVALID |
+| AC-11-6 연결 중 만료 유지 | PASS | Clock 16분 이동 후 같은 연결·기존 개인 큐 메시지 수신, 새 레인 구독 수신. 새 만료 CONNECT는 거절 |
+| 로그아웃 시 토큰 없는 재연결 | PASS | 실제 UI 로그아웃 후 익명 배지·Authorization 없는 새 CONNECT, 반복 10회 및 늦은 Refresh 응답 경합 |
+| ADR-003 임시 제한 해소 | PASS | 유효 USER/ADMIN CONNECT 허용·회원 ID와 역할·인증 개인 큐 검증. ADR-003/006 후속과 ARCH 부록 A 갱신 |
+
+### 직접 확인하는 방법
+
+이미 실행 중인 이 checkout의 bootRun이 있으면 그 터미널에서 먼저 Ctrl+C로 종료한다. Windows에서는 JAR 잠금 때문에 clean이 실패할 수 있다. 현재 환경의 기본 java는 7이므로 Java 21을 명시한다.
+
+```powershell
+# 저장소 루트의 PowerShell 7
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+Set-Location backend
+.\gradlew.bat clean build
+# 만료·구독만 따로 재현할 때
+.\gradlew.bat :app:test --tests 'com.fourlane.realtime.StompAuthenticationIntegrationTest'
+```
+
+별도 실행으로 화면을 확인한다. JWT 키는 이 로컬 프로세스에만 넣고 출력·커밋하지 않는다.
+
+```powershell
+# 저장소 루트
+docker compose up -d mysql
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+$env:JWT_SECRET_BASE64 = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+Set-Location backend
+.\gradlew.bat :app:bootRun
+# 다른 터미널: 저장소 루트에서
+# Set-Location frontend
+# npm run dev
+```
+
+1. `http://127.0.0.1:5173`에서 WebSocket 익명 연결을 확인한다.
+2. 기존 가입 화면에서 USER를 만들고 로그인한다. 인증 연결 배지와 개발자 도구 Network → `/ws` → Messages의 Authorization 포함 CONNECT·개인 큐 SUBSCRIBE를 확인한다.
+3. 내 정보로 이동해도 같은 연결이 유지되는지 보고 홈으로 돌아온다.
+4. 로그아웃하면 익명 연결 배지와 새 CONNECT의 Authorization 부재를 확인한다.
+5. 만료는 위 테스트 명령으로 Clock을 이동해 재현한다. 실제 만료 시간을 기다리지 않는다.
+6. smoke curl: `curl.exe 'http://127.0.0.1:8080/api/sessions?status=SCHEDULED'` → 200, `curl.exe -i 'http://127.0.0.1:8080/api/sessions'` → 400, `curl.exe 'http://127.0.0.1:8081/actuator/health'` → UP.
+7. 프론트 검사는 `Set-Location frontend` 뒤 `npm run lint`, `npm run typecheck`, `npm run build` 순서다.
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 공용 Decoder와 변환기로 REST·STOMP의 서명·만료·회원 ID·역할 해석을 맞췄다. 연결 중 만료를 유지하므로 연결을 통한 즉시 토큰 폐기 장치는 아니다. 다른 탭·탈취 Access의 즉시 무효화 정책을 추가하지 않았다.
+- 현재 시각의 앞으로 점프는 새 CONNECT를 일찍 만료시키고 역행은 유효 시간을 늘릴 수 있다. 기존 연결에는 만료 타이머가 없으며 개인 정보는 본인 큐에만 보낸다. 레인 OQ-35는 미결 그대로다.
+- 소켓 종료와 재발급이 겹칠 때 종료 대기·세대 확인이 빠지면 중복 연결이나 과거 신원 복원이 가능하다. 실제 소켓 최대 수와 늦은 응답을 관찰해 검증했다.
+- 새 트랜잭션·락·경매 타이머는 없다. Refresh 회전의 트랜잭션·잠금·커밋 실패 한계는 ADR-006을 따른다.
+- 후속: M1-08의 익명/ADMIN 관전 화면 연결 수명, M3-06의 알림 생성·알림함·UI, M2/M3의 레인 동기화·재연결 복구. CH-08 미결 후보와 다른 제품 OQ·B는 정하지 않았다.
+- 증거 범위: 로컬 단위·실제 MySQL 앱·HTTP·STOMP TCP·실제 브라우저다. 원격 push·PR·CI, 운영 HTTPS·배포, 부하·성능·대규모 재연결·경매 복구와 실제 알림 기능은 **NOT_RUN**이다. 본 절의 PASS는 M1-02 수용 기준 범위다.
+
 ## M1-01 회원가입·로그인·재발급·로그아웃
 
 - 작업일: 2026-10-27 (Asia/Seoul).
@@ -19,7 +135,7 @@
 - BCrypt와 API 0.4의 입력 검증: 비밀번호 8~64 코드 포인트·UTF-8 최대 72바이트, 닉네임 2~20 코드 포인트·중복 허용. USER 가입 고정, ADMIN은 명시적 admin-seed만 허용한다.
 - V5는 member_warning의 실제 조회 원본을 만든다. member FK와 trade_id 유니크를 적용했다. trade가 아직 없으므로 **M3-07에서 fk_warning_trade 추가가 필수**다. 경고 쓰기·패널티 정책·거래 구현은 넣지 않았다. V1~V4 수정은 없다.
 - FE는 생성 함수만 호출한다. 탭 내부의 진행 중 Promise와 요청 당시 토큰 비교로 늦은 401도 합류시킨다. 탭 사이는 Web Locks `auth-refresh`로 직렬화하고 로그인·로그아웃도 같은 락을 쓴다. Access는 메모리, 회원 데이터는 TanStack Query의 `['me']` 캐시다. 토큰 내용은 해석하지 않는다.
-- 익명 STOMP 진단과 토큰 CONNECT 임시 거절은 그대로다. 인증 CONNECT·개인 큐·신원 전환은 M1-02다. 관전 진입에 맞춘 연결 수명 정리는 M1-08이다.
+- M1-01 당시 익명 STOMP 진단과 토큰 CONNECT 임시 거절은 그대로였다. **후속 M1-02 처리 완료**: 인증 CONNECT·개인 큐·신원 전환은 위 M1-02 절과 ADR-007에 기록했다. 관전 진입에 맞춘 연결 수명 정리는 M1-08이다.
 
 ### 단계별 실제 실행 증거
 
@@ -131,7 +247,7 @@ ADMIN은 `ADMIN_SEED_EMAIL`과 유효한 `{bcrypt}` 해시인 `ADMIN_SEED_PASSWO
 - 이전 폐기와 신규 저장을 한 트랜잭션으로 묶어 반쪽 회전을 막는다. **커밋 후 응답/Set-Cookie가 유실되면** 구 토큰은 이미 폐기되어 재로그인이 필요할 수 있다. 재사용 유예가 없다는 승인한 정책의 한계다. 새 쿠키를 잘못 지우지 않도록 실패 응답은 Set-Cookie를 보내지 않는다.
 - Web Locks는 같은 출처·브라우저 컨텍스트의 협력하는 탭을 직렬화한다. 서버는 이를 신뢰하지 않고 DB 잠금으로 중복 성공을 막는다. 다른 클라이언트·응답 유실까지 해결하는 장치는 아니다.
 - Clock 역행은 유효 기간을 실제 시간보다 늘릴 수 있고, 앞으로 점프하면 일찍 만료될 수 있다. JWT는 초 단위라 실제 수명은 발급 Clock 값 기준 15분보다 최대 1초 미만 짧다. 응답의 expiresAt과 실제 검증 경계는 일치한다. 레인 시계 점프 OQ-35는 이번에 정하지 않았다.
-- M1-02: 공용 Decoder로 CONNECT 인증, 임시 TOKEN_INVALID 거절 제거, Principal·개인 큐·연결 신원 전환. M1-08: 익명 진단 연결 수명 정리. M3-07: trade FK와 경고 쓰기·거래 구현. 패널티 OQ-26은 미결 그대로다.
+- **M1-02 처리 완료**: 공용 Decoder로 CONNECT 인증, 임시 TOKEN_INVALID 거절 제거, Principal·개인 큐·연결 신원 전환(위 M1-02 절·ADR-007). M1-08: 익명 진단 연결 수명 정리. M3-07: trade FK와 경고 쓰기·거래 구현. 패널티 OQ-26은 미결 그대로다.
 - 원격 CI·운영 HTTPS·실제 운영 Secure 쿠키·외부 관리 포트·배포/이미지 실행·성능·복구·입찰·STOMP JWT는 NOT_RUN이다. 단위/필터/MySQL/TCP/실제 UI의 증거를 서로 대신하지 않는다. 새 npm 의존성·외부 알림·원격 쓰기는 없다.
 
 ## M0-05 첫 배포 준비
@@ -532,7 +648,7 @@ npm run build
 
 ### 승인한 임시 제한과 후속 작업
 
-- **M1-02**: Authorization 헤더가 있는 CONNECT는 빈 값도 `ERROR message:TOKEN_INVALID` 뒤 종료한다. JWT 검증의 완료를 뜻하지 않는다. 같은 JwtDecoder로 유효/만료/위조를 구분하고 Principal·인증된 개인 큐를 구현할 때 이 임시 거절을 제거한다.
+- **M1-02 처리 완료 (2026-10-27)**: M0-03 당시의 Authorization 포함 CONNECT 일괄 거절을 제거했다. 공용 Decoder로 유효/만료/위조를 구분하고 Principal·인증 개인 큐·프론트 신원 전환을 구현·검증했다(위 M1-02 절·ADR-007). 아래 M0-03의 실행 증거는 당시 범위 그대로다.
 - **M1-08**: 홈의 익명 STOMP 연결은 M0 진단용 예외다. EVENTS 1.1의 비로그인 연결 시점(관전 화면)에 맞춰 연결 수명을 정리한다.
 - 회차·레인·Lot 엔티티는 현재 조회용 부분 매핑이며 `@Immutable`이다. 후속 생성·상태 전이 구현 시 해당 매핑을 확장한다. 이번 작업에서 상태 전이나 쓰기 기능의 완료를 주장하지 않는다.
 
@@ -568,7 +684,7 @@ Windows Chrome + Playwright CLI에서 실제 Compose MySQL·bootRun·Vite를 연
 | 익명 CONNECT → CONNECTED, SEND·직접 /queue 구독 거절 | PASS | WebSocketStompClient의 실제 연결·ERROR·연결 종료. 브라우저 STOMP CONNECTED 수신도 확인 |
 | 프론트는 생성 클라이언트로만 목록 호출 | PASS | sessionQueries가 생성 listSessions만 호출. Git 소스 검사상 수동 fetch 없음. 실제 브라우저의 같은 출처 /api/sessions 호출 확인 |
 
-API.md·EVENTS.md·TASKS.md 원문은 수정하지 않았다. 진단 API와 테스트 토픽은 추가하지 않았다. 승인한 임시 제한 두 가지는 위 후속 작업 및 ADR-003에 남아 있다.
+API.md·EVENTS.md·TASKS.md 원문은 수정하지 않았다. 진단 API와 테스트 토픽은 추가하지 않았다. M0-03 당시 승인한 임시 제한 중 CONNECT 인증은 후속 M1-02에서 해소했고 홈의 익명 연결 수명은 M1-08에 남아 있다(위 후속 작업·ADR-003).
 
 ### 직접 확인하는 방법
 
