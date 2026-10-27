@@ -1,0 +1,90 @@
+spring:
+  application:
+    name: four-lane-auction
+  profiles:
+    default: local
+  datasource:
+    hikari:
+      data-source-properties:
+        connectionTimeZone: UTC
+        forceConnectionTimeZoneToSession: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+
+server:
+  error:
+    include-exception: false
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:fourlane_auction}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true&sslMode=DISABLED
+    username: ${MYSQL_USER:fourlane}
+    password: ${MYSQL_PASSWORD:fourlane_local_password}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:8081}
+    address: 127.0.0.1
+
+---
+# MVC/configuration slices do not open a DB. MySQL integration starts in M0-02.
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:mysql://${TEST_MYSQL_HOST:127.0.0.1}:${TEST_MYSQL_PORT:3306}/${TEST_MYSQL_DATABASE:fourlane_auction_test}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: ${TEST_MYSQL_USER:fourlane}
+    password: ${TEST_MYSQL_PASSWORD:fourlane_local_password}
+
+server:
+  port: 0
+
+management:
+  server:
+    port: 0
+    address: 127.0.0.1
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+server:
+  port: ${SERVER_PORT}
+
+management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT}
+    address: ${MANAGEMENT_SERVER_ADDRESS}
