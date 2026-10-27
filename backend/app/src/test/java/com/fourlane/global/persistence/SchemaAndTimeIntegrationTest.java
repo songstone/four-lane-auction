@@ -39,7 +39,8 @@ class SchemaAndTimeIntegrationTest extends MySqlIntegrationTest {
     @Autowired Clock clock;
 
     @TestConfiguration(proxyBeanMethods = false)
-    @EntityScan(basePackageClasses = MemberTimeProbe.class)
+    @EntityScan(basePackageClasses = {MemberTimeProbe.class,
+            com.fourlane.auction.session.domain.AuctionSession.class})
     static class PersistenceProbes {
     }
 

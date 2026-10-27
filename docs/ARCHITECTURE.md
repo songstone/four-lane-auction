@@ -109,7 +109,8 @@
 | 마이그레이션 | Flyway | MySQL 지원 모듈(`flyway-mysql`)이 따로 필요하다 |
 | 인증 | Spring Security + JWT | JWT 발급·검증은 Spring Security의 `spring-security-oauth2-jose`(Nimbus)로 한다 (제안). 별도 JWT 라이브러리 없이 만료 검증기(`JwtTimestampValidator`)에 주입한 `Clock`을 넣을 수 있다 (9장 R10) |
 | 실시간 | Spring WebSocket + STOMP, Simple Broker | SockJS는 쓰지 않는다 (제안). k6와 브라우저 모두 순수 WebSocket을 쓴다 |
-| API 문서 | springdoc-openapi (Boot 4 대응 라인) | REST만 문서화한다. 계약의 원본은 [API.md](API.md)이고, 생성된 OpenAPI가 그와 같은지 계약 테스트로 본다. STOMP 메시지는 [EVENTS.md](EVENTS.md)에 둔다 |
+| API 문서 | springdoc-openapi-starter-webmvc-api 3.2.0 | M0-03 사용자 승인. Boot 4.1.2 대응. REST만 문서화한다. 계약의 원본은 [API.md](API.md)이고, 생성된 OpenAPI가 그와 같은지 계약 테스트로 본다. STOMP 메시지는 [EVENTS.md](EVENTS.md)에 둔다 |
+| API 클라이언트 생성 | Orval 8.45.0 + 브라우저 Fetch | M0-03 사용자 승인 ([ADR-003](adr/ADR-003-M0-03-api-generation-and-connections.md)). 실행 중인 백엔드 `/v3/api-docs` → `frontend/src/api/generated/`. 생성 코드 커밋, 화면의 직접 fetch 금지 |
 | 테스트 | JUnit 6 (Jupiter), Testcontainers (MySQL) | M0-01 사용자 승인(2026-10-27): Spring Framework 7의 테스트 기준에 맞춰 JUnit 6을 쓴다. 버전은 Boot 4.1.2 BOM으로 고정한다. Testcontainers는 M0-02에서 도입한다. H2는 쓰지 않는다 (CHALLENGES 2장: InnoDB 락 동작이 다르다) |
 | 관측 | Micrometer, Prometheus, Grafana | PRD 9.5 |
 | 프론트 | React, Vite, TypeScript, Tailwind CSS, TanStack Query, @stomp/stompjs | |
@@ -1740,6 +1741,7 @@ PRD에 없어서 넣지 않은 보안 기능(로그인 시도 제한, 이미지 
 | CH-11 측정 | 메트릭 태그는 `laneNo`, 히스토그램으로 내보냄 | (제안) | 6.7 |
 | CH-12 다중 서버 | 확장하지 않음 | 기본안 | 10 |
 | (기술 선택) 조회 쿼리 | QueryDSL 없이 `@Query` + DTO 프로젝션 | 결정됨 (리뷰) | 1.3 |
+| (기술 선택) API 생성·연결 진단 | Orval + Fetch, springdoc 3.2.0, 시각·ID 키셋 커서. 토큰 포함 CONNECT 임시 거절은 M1-02, 홈 익명 연결은 M1-08에서 정리 (ADR-003) | 결정됨 (M0-03 사용자 승인, 2026-10-27) | 1.3, PROGRESS M0-03 |
 
 ---
 

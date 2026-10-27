@@ -1,9 +1,10 @@
 package com.fourlane.global.error;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-public record ApiErrorResponse(ErrorDetail error) {
+public record ApiErrorResponse(@Schema(requiredMode = Schema.RequiredMode.REQUIRED) ErrorDetail error) {
     public static ApiErrorResponse of(ErrorCode code) {
         return of(code, null, List.of());
     }
@@ -15,9 +16,16 @@ public record ApiErrorResponse(ErrorDetail error) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record ErrorDetail(String code, String message, LaneReference lane, List<FieldViolation> fields) {}
+    public record ErrorDetail(
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String code,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String message,
+            LaneReference lane, List<FieldViolation> fields) {}
 
-    public record LaneReference(String epoch, long seq) {}
+    public record LaneReference(
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String epoch,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) long seq) {}
 
-    public record FieldViolation(String field, String reason) {}
+    public record FieldViolation(
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String field,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String reason) {}
 }

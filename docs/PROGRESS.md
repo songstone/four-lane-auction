@@ -213,3 +213,41 @@ npm run build
 정적 검사 실패를 직접 재현하려면 운영 Java에 임시로 `Instant.now()`를 넣거나, **새 임시 SQL 파일**에 `SELECT NOW();`를 넣고 `./gradlew.bat clean build`를 실행한다. `verifyTimeSources`가 경로·행 번호와 함께 실패해야 한다. 임시 변경을 제거하고 같은 명령이 성공하는지 확인한다. 적용된 V1~V4는 수정하지 않는다. 이번 실제 실패 재현의 임시 파일은 모두 제거되어 있다.
 
 제품 엔티티·API·WebSocket·보안·ADMIN 생성 방식·CI 워크플로는 후속 범위다. 배포·Linux/macOS 실행·경매 동작·동시성·복구·성능 검증은 **NOT_RUN**이다.
+
+## M0-03 연결 확인 화면 (REST + WebSocket)
+
+- 작업일: 2026-10-27 (Asia/Seoul)
+- 상태: 진행 중 — [BE] 완료
+- 원본: TASKS M0-03, API 1.2·1.4·1.5·4.1, EVENTS 1장과 사용자 보충
+- 시작 SHA: `354b2ae36bf53c96b6a1dad4720a79fd8ee6aa3b`, `dev`, 작업 트리 clean
+- 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction` (별도 worktree 없음)
+- 승인: 사용자 2026-10-27. Orval + Fetch, springdoc 3.2.0, 키셋 커서와 [BE] → [GEN] → [FE] → [통합] 계획 승인. 토큰 포함 CONNECT 임시 거절도 명시 승인
+- 결정 기록: [ADR-003](adr/ADR-003-M0-03-api-generation-and-connections.md)
+
+### 버전 확인 및 고정
+
+확인일은 2026-10-27이다. 프론트 직접 의존성은 정확한 버전과 lockfile로 고정하고, WebSocket은 기존 Boot BOM 조합을 따른다.
+
+| 대상 | 선택 버전 | 확인한 출처 |
+|---|---|---|
+| springdoc-openapi-starter-webmvc-api | 3.2.0 | [공식 릴리스](https://github.com/springdoc/springdoc-openapi/releases/tag/v3.2.0): Boot 4.1.2 기반. [호환 표](https://springdoc.org/#what-is-the-compatibility-matrix-of-springdoc-openapi-with-spring-boot), [Maven metadata](https://repo.maven.apache.org/maven2/org/springdoc/springdoc-openapi-starter-webmvc-api/maven-metadata.xml) |
+| Spring WebSocket·Messaging / WebSocket starter | Boot 4.1.2 BOM (Framework 7.0.10) | 기존 승인 BOM. 개별 버전을 덮어쓰지 않는다 |
+| Orval | 8.45.0 (개발 의존성) | [npm metadata](https://registry.npmjs.org/orval/8.45.0), [Fetch 생성 문서](https://orval.dev/docs/guides/fetch/) |
+| 런타임 HTTP | 브라우저 Fetch | Orval 생성 코드 내부에서 사용. 추가 HTTP 런타임 의존성 없음 |
+| @stomp/stompjs | 7.5.0 | [npm metadata](https://registry.npmjs.org/@stomp%2Fstompjs/7.5.0), EVENTS 1.1 |
+
+비교 대안은 openapi-typescript 7.13.0 + openapi-fetch 0.17.0, springdoc 3.1.1, offset 기반 커서였다. 선택 이유는 ADR-003에 기록했다.
+
+### 승인한 임시 제한과 후속 작업
+
+- **M1-02**: Authorization 헤더가 있는 CONNECT는 빈 값도 `ERROR message:TOKEN_INVALID` 뒤 종료한다. JWT 검증의 완료를 뜻하지 않는다. 같은 JwtDecoder로 유효/만료/위조를 구분하고 Principal·인증된 개인 큐를 구현할 때 이 임시 거절을 제거한다.
+- **M1-08**: 홈의 익명 STOMP 연결은 M0 진단용 예외다. EVENTS 1.1의 비로그인 연결 시점(관전 화면)에 맞춰 연결 수명을 정리한다.
+- 회차·레인·Lot 엔티티는 현재 조회용 부분 매핑이며 `@Immutable`이다. 후속 생성·상태 전이 구현 시 해당 매핑을 확장한다. 이번 작업에서 상태 전이나 쓰기 기능의 완료를 주장하지 않는다.
+
+### 단계별 실행 증거
+
+- **[BE] PASS**: Corretto 21에서 `./gradlew.bat test build` 성공 (`output/m0-03-be-final-build.log`). UTC 70건 + 별도 JVM Asia/Seoul 70건, 각각 failures/errors/skipped 0. 기존 22건과 새 MVC 11건·인터셉터 13건·실제 MySQL/HTTP/STOMP 통합 24건이다. engine은 도메인 코드가 없어 `test NO-SOURCE`이며 엔진 기능 검증으로 해석하지 않는다.
+- 실제 MySQL 테스트: 세 상태의 정렬, 시각 동률의 ID 정렬과 2개씩 페이지 이동, 마지막 기준 행 삭제·앞쪽 삽입 후 계속 조회, 기본 20/최대 100, 두 레인의 Lot 합계, 잘못된/다른 상태 커서 400, 필수 nullable 필드를 검증했다. 테스트 fixture는 Testcontainers에만 만들었다.
+- 실제 `WebSocketStompClient`: 익명 CONNECTED(STOMP 1.2, 10초 하트비트), 숫자 레인 구독, SEND 세 목적지 차단, 개인 큐·직접 큐·허용 목록 밖 구독 차단, ERROR message와 연결 종료, 토큰 헤더 임시 거절, 미허용 Origin의 403을 확인했다. 테스트 토픽이나 이벤트 발행 코드는 추가하지 않았다.
+- 실제 bootRun + Compose MySQL: 상태별 목록 200·빈 배열·null 커서·밀리초 3자리 UTC serverTime, status 누락 400 INVALID_REQUEST 확인 (`output/m0-03-http-checks.json`). `/v3/api-docs`는 `/api/sessions`만 노출하며 필수·nullable·enum·오류 스키마를 계약 테스트로 검사했다 (`output/m0-03-openapi.json`).
+- 시간 출처 검사: 운영 파일 29개, 0 violations. V1~V4 수정 없음. 최초 테스트 클라이언트의 하트비트 스케줄러 누락과 STOMP 헤더 접근 오류를 수정한 뒤 위 최종 명령을 성공시켰다. 동일 checkout의 이전 앱·Vite 프로세스가 기본 포트를 사용하고 있어 소유 경로를 확인해 종료한 뒤 최신 백엔드를 기동했다.
