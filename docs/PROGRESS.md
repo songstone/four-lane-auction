@@ -110,3 +110,106 @@ prod에서 필요한 값은 `SPRING_PROFILES_ACTIVE=prod`, `DB_URL`, `DB_USERNAM
 ### 범위와 증거의 한계
 
 Flyway·Testcontainers·스키마·DB 시간 정밀도 통합 테스트는 M0-02, WebSocket·springdoc·OpenAPI 생성은 M0-03, security는 M1-01이다. simulator는 빈 디렉터리 자리뿐이다. 이번 HTTP/MVC 검증은 경매 기능·동시성·복구·성능 검증을 뜻하지 않는다. 성능 수치는 측정하지 않는다.
+
+## M0-02 Flyway 스키마와 시간 출처 검사
+
+- 작업일: 2026-10-27 (Asia/Seoul)
+- 상태: 완료 (M0-02 범위, 아래 수용 기준·실행 증거 기준)
+- 원본: [TASKS M0-02](TASKS.md#m0-02-flyway-스키마와-시간-출처-검사)
+- 시작 SHA: `95720b944daf83b73fb17100687ef59096c7252b`, `dev`, 작업 트리 clean
+- 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction` (별도 worktree 없음)
+- 승인: V1~V4 함께 적용, Gradle 빌드 단계 검색, Flyway 13.11.1 BOM 예외, ARCH 4.4의 CHECK 두 곳을 먼저 보강한 뒤 SQL 복사. 변경·검증 계획 전체 승인
+- 결정 기록: [ADR-002](adr/ADR-002-M0-02-schema-and-time-sources.md)
+
+### 버전 확인과 실제 해석 결과
+
+확인일은 2026-10-27이다. Maven Central의 release metadata와 공식 릴리스·사용 문서를 확인했고, 프리릴리스·snapshot은 선택하지 않았다.
+
+| 대상 | 선택·해석 버전 | 확인한 출처와 이유 |
+|---|---|---|
+| Flyway core / MySQL 모듈 | **13.11.1**, 두 모듈 모두 `strictly` 고정 | [core metadata](https://repo.maven.apache.org/maven2/org/flywaydb/flyway-core/maven-metadata.xml), [MySQL metadata](https://repo.maven.apache.org/maven2/org/flywaydb/flyway-mysql/maven-metadata.xml), [공식 릴리스 노트](https://documentation.red-gate.com/fd/release-notes-for-flyway-engine-179732572.html). 현재 최신 안정판. Boot BOM 12.4.0 대신 쓰도록 승인받은 예외 |
+| Boot Flyway starter / 연동 모듈 | 4.1.2 | [공식 기동 연동 설명](https://docs.spring.io/spring-boot/how-to/data-initialization.html), [starter POM](https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.pom). MySQL 지원은 별도 모듈이 필요하다 |
+| Testcontainers BOM / MySQL / JUnit Jupiter 모듈 | **2.0.5** | [metadata](https://repo.maven.apache.org/maven2/org/testcontainers/testcontainers-bom/maven-metadata.xml), [공식 릴리스](https://github.com/testcontainers/testcontainers-java/releases/tag/2.0.5), [MySQL 문서](https://java.testcontainers.org/modules/databases/mysql/). 최신 안정판이며 Boot 4.1.2 BOM과 동일 |
+| MySQL Server | 8.4.13 LTS, Compose와 같은 digest | [공식 릴리스 노트](https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-13.html), [공식 이미지 metadata](https://hub.docker.com/v2/repositories/library/mysql/tags/8.4.13). 컨테이너에서 `SELECT VERSION()`으로 실제 버전 확인 |
+| JUnit Jupiter | 6.0.3 (유지) | [Boot 4.1.2 BOM](https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-dependencies/4.1.2/spring-boot-dependencies-4.1.2.pom) |
+| 공유 Jackson annotations | 2.22 (Flyway의 전이 의존성으로 해석) | [Flyway core 13.11.1 POM](https://repo.maven.apache.org/maven2/org/flywaydb/flyway-core/13.11.1/flyway-core-13.11.1.pom), 실제 `runtimeClasspath` 보고서. Boot BOM의 2.21 요청보다 높게 해석된다. Jackson 3 databind/core는 3.1.7을 유지한다. 최종 MVC 직렬화·에러 계약 테스트와 실제 HTTP를 함께 검증했다 |
+
+실제 패키징 JAR에 `flyway-core-13.11.1.jar`, `flyway-mysql-13.11.1.jar`, `spring-boot-flyway-4.1.2.jar`가 포함됨을 확인했다. 별도 Flyway Gradle 플러그인·ArchUnit·H2·Redis는 추가하지 않았다.
+
+### SQL 원본과 적용 규칙
+
+- ARCH 4.4를 먼저 보강했다: `ck_lane_pause`의 PAUSED 분기에 `pause_cause IS NOT NULL`, `ck_lot_unsold_reason`의 UNSOLD 분기에 `unsold_reason IS NOT NULL` 추가. MySQL CHECK는 UNKNOWN(NULL)도 허용하기 때문이다 ([공식 설명](https://dev.mysql.com/doc/refman/8.4/en/create-table-check-constraints.html)).
+- 그 뒤 ARCH의 SQL 코드 블록에서 `V1__member_auth.sql`, `V2__item.sql`, `V3__bid_policy.sql`, `V4__auction.sql`을 추출했다. 줄바꿈을 LF로 맞춘 텍스트 대조에서 **네 파일 모두 원본과 동일**했다. `member` 등 테이블 이름·시드 값은 그대로다.
+- 기본 정책은 원문대로 v1 한 행과 구간 `(0, 1000)`, `(10000, 10000)`, `(100000, 25000)`이다. `created_by=NULL`, 시드 생성 시각도 원문 값이다. ADMIN 계정 행은 넣지 않았다. 생성 방식은 M1-01에서 정한다.
+- **다음 마이그레이션부터 실제 적용 순서대로 다음 번호를 매긴다** (TASKS 11장 3번). ARCH 4.3의 V5~V8은 계획 당시 번호로 예약하지 않는다. 이미 적용한 파일은 수정하지 않고 변경은 새 버전 파일로 낸다. ARCH 4.3 표 정리는 원래 지정된 M2-01에서 한다.
+- Flyway가 DDL을 관리한다. `ddl-auto=validate`, UTC 설정을 유지하며 SQL init·baseline·out-of-order·clean은 사용하지 않는다.
+
+### 수용 기준과 실행 증거
+
+검증 환경은 Windows, Corretto 21.0.10, Gradle Wrapper 9.8.2, Docker의 실제 MySQL 8.4.13이다. `.env`와 `application-local.yml` 없이 기본 local 설정으로 기동했다.
+
+| TASKS M0-02 수용 기준 | 결과 | 실행 증거 |
+|---|---|---|
+| 빈 DB bootRun → V1~V4, validate, 정책 v1 구간 3개 | PASS — 실제 기동 + MySQL 통합 | 기동 전 Compose DB의 테이블 수 0. bootRun이 이력 테이블과 V1~V4를 생성하고 JPA 초기화·8080/8081 기동. SQL로 성공 이력 4건과 구간 3개 확인. 재기동 로그는 `Schema ... is up to date. No migration necessary.` |
+| DATETIME(3) 저장·조회 정밀도, Clock의 선행 절삭 | PASS — 실제 Hibernate + MySQL | 테스트 전용 `member` 매핑으로 `.000`, `.123`, `.999`를 persist → flush → clear → find한 값이 동일. DB의 DATE_FORMAT 원시 UTC 문자열도 비교. 고정 시각 `.999600`은 tick Clock에서 `.999`로 잘린 뒤 저장되어 다음 초 마감 경계를 넘지 않음. 실제 주입 Clock의 값도 같은 경로로 확인 |
+| JVM 기본 시간대 Asia/Seoul에서도 동일 | PASS — 별도 JVM + 실제 MySQL | `test`의 `-Duser.timezone=UTC`와 `testSeoul`의 `-Duser.timezone=Asia/Seoul`에서 같은 테스트 실행. 테스트가 실제 JVM 기본 시간대를 확인하며 JDBC 세션은 UTC. 각각 22건, 실패·오류·건너뛰기 0건 |
+| 금지 출처 0건, 의도한 위반 시 빌드 실패 | PASS — Gradle + 실제 실패 재현 | 정상 운영 소스 14개 파일에서 0건. 임시 Java 파일의 호출·쿼리 위반 11건, 임시 새 SQL의 위반 2건을 각각 `clean build`가 exit 1로 거절. 두 임시 파일 제거와 V1~V4 해시 불변 확인 후 같은 `clean build` 최종 성공 |
+| 시작가 12,345원 Item INSERT 거절 | PASS — 실제 CHECK | 정상 USER와 시작가 12,000 Item INSERT가 성공한 같은 테스트에서 12,345 INSERT가 MySQL 오류 3819, `ck_item_start_price`로 거절됨. 외래 키나 다른 제약에 의한 실패와 구분 |
+
+실제 업무 엔티티는 아직 없다. 따라서 bootRun의 `validate` 성공은 전체 제품 엔티티 매핑 검증을 뜻하지 않는다. 통합 테스트는 테스트 전용 매핑의 Hibernate validation·저장 경로와 업무 테이블 10개의 존재·InnoDB·정렬·시간 컬럼 DATETIME(3)·DB 시간 기본값 부재를 각각 검증한다. 테스트 전용 매핑과 임시 위반 파일은 패키징 JAR에 없다.
+
+추가 CHECK 검증도 실제 DB에서 통과했다. OPERATOR 원인이 있는 PAUSED 레인과 NO_BID 사유가 있는 UNSOLD Lot은 INSERT가 성공하고, 같은 상태에서 사유를 NULL로 넣으면 각각 `ck_lane_pause`, `ck_lot_unsold_reason`의 오류 3819로 거절된다. USER 테스트 데이터는 롤백되며 로컬 Compose의 `member` 행은 0개다.
+
+### 단일 검증 명령과 결과
+
+- CI 진입점은 **`cd backend && ./gradlew clean build`**다. 루트 집계 작업에 시간 출처 검사·engine/app 빌드·일반 테스트·Seoul 테스트를 연결했다. Windows에서는 `./gradlew.bat clean build`를 쓴다. 실제 GitHub Actions 작성·실행은 M0-04이며 이번에는 **NOT_RUN**이다.
+- 최종 `clean build`: 성공. `test` 22건 + `testSeoul` 22건 = **총 44회 테스트 실행, 실패 0·오류 0·건너뛰기 0**. 서로 다른 테스트 44개라는 뜻은 아니다. 각 실행은 기존 Clock/MVC 11건 + 신규 MySQL 통합 11건이다.
+- TASKS의 `./gradlew test`도 성공했다. 최종 빌드와 입력이 같아 app 테스트는 UP-TO-DATE였고, 시간 출처 검사는 다시 실행되어 0건을 확인했다. 실제 테스트 실행 증거는 위 최종 빌드다.
+- engine은 아직 도메인 구현·테스트가 없어 `engine:test NO-SOURCE`다. 엔진 기능 검증으로 해석하지 않는다.
+- 프론트 `npm run typecheck`, `npm run build`: 성공. 프론트 소스는 변경하지 않았다.
+- 실제 HTTP: 관리 포트 health 200/UP, 앱·Vite 프록시의 없는 API 경로는 404/NOT_FOUND JSON. Flyway 도입 뒤 기존 공통 계약이 유지된다.
+- 정적 검사는 engine/app의 운영 Java·SQL·XML·YAML·properties를 대상으로 한다. Java 호출은 일반 표기·완전 수식명·정적 import·공백 변형을 검사하고, Java 문자열·text block의 SQL/JPQL과 SQL 파일의 NOW(정밀도 포함)·CURRENT_TIMESTAMP도 검사한다. 주석과 테스트·빌드 산출물·외부 라이브러리 내부는 제외한다. 소스 검색의 판별 한계는 ADR-002에 기록했다.
+
+### 재현 중 수정한 문제와 증거 위치
+
+- 처음 `clean`은 기존 M0-01 bootRun이 engine JAR을 열고 있어 Windows 파일 잠금으로 실패했다. 해당 앱 프로세스를 확인해 종료한 뒤 재실행했다. 실행 중인 bootRun을 먼저 종료하고 clean을 사용해야 한다.
+- Testcontainers는 tag와 digest를 함께 쓴 문자열을 호환 이미지로 해석하지 못해, **같은 manifest**를 digest-only 이름으로 전달했다. 테스트에서 실제 버전 8.4.13을 확인한다.
+- 컨테이너 JDBC URL에 `&`로 매개변수를 직접 붙이던 초기 코드는 URL에 `?`가 없을 때 DB 이름으로 해석되어 실패했다. `withUrlParam`으로 바꿨다. 테스트를 건너뛰거나 SQL을 바꿔 해결하지 않았다.
+- Java 정적 import 검사에서 공백 뒤의 수식 호출을 중복 집계하던 부분을 실패 재현 중 발견해 제거했다. 최종 실패 로그는 서로 다른 위반 11건을 가리킨다.
+- 최종 테스트 보고서: `backend/app/build/reports/tests/test/index.html`, `backend/app/build/reports/tests/testSeoul/index.html` 및 각 `test-results` XML.
+- 정상/의도한 실패: `output/m0-02-final-build.log`, `output/m0-02-java-violation.log`, `output/m0-02-sql-violation.log`, `output/m0-02-violation-checks.json`.
+- 실제 기동·DB·HTTP: `output/m0-02-before-boot-db.txt`, `output/m0-02-bootrun.log`, `output/m0-02-bootrun-restart.log`, `output/m0-02-schema-evidence.txt`, `output/m0-02-http-checks.json`.
+- 의존성 해석: `output/m0-02-dependencies.log` (runtime), `output/m0-02-initial-build.log` (Testcontainers 해석 포함). 위 산출물은 gitignore 대상이다.
+
+### 직접 확인하는 방법
+
+JDK 21과 Docker가 필요하다. 아래 clean 검증 전에 실행 중인 bootRun 터미널에서 Ctrl+C로 종료한다. MySQL 볼륨은 지우지 않는다.
+
+```powershell
+# 저장소 루트
+docker compose up -d mysql
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10' # 자신의 JDK 21 경로
+cd backend
+./gradlew.bat clean build
+# verifyTimeSources 0 violations, test/testSeoul 성공
+./gradlew.bat test
+./gradlew.bat :app:bootRun
+```
+
+별도 터미널의 루트에서 확인한다. `-p`에는 `.env.example`의 로컬 MYSQL_PASSWORD를 입력한다.
+
+```powershell
+docker compose exec mysql mysql -ufourlane -p fourlane_auction -e "SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;"
+# 1 member auth / 2 item / 3 bid policy / 4 auction, success=1
+docker compose exec mysql mysql -ufourlane -p fourlane_auction -e "SELECT policy_id, min_price, increment FROM bid_increment_tier ORDER BY min_price; SELECT COUNT(*) AS admin_count FROM member WHERE role='ADMIN';"
+# 구간 3개, admin_count=0
+curl.exe http://localhost:8081/actuator/health
+# status=UP
+cd frontend
+npm run typecheck
+npm run build
+```
+
+정적 검사 실패를 직접 재현하려면 운영 Java에 임시로 `Instant.now()`를 넣거나, **새 임시 SQL 파일**에 `SELECT NOW();`를 넣고 `./gradlew.bat clean build`를 실행한다. `verifyTimeSources`가 경로·행 번호와 함께 실패해야 한다. 임시 변경을 제거하고 같은 명령이 성공하는지 확인한다. 적용된 V1~V4는 수정하지 않는다. 이번 실제 실패 재현의 임시 파일은 모두 제거되어 있다.
+
+제품 엔티티·API·WebSocket·보안·ADMIN 생성 방식·CI 워크플로는 후속 범위다. 배포·Linux/macOS 실행·경매 동작·동시성·복구·성능 검증은 **NOT_RUN**이다.
