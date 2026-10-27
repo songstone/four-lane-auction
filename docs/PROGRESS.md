@@ -1,5 +1,51 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M0-05 첫 배포 준비
+
+- 작업일: 2026-10-27 (Asia/Seoul).
+- 상태: **이미지·서버 compose·배포 문서 준비 중 / 실제 서버 배포 검증 NOT_RUN**. 사용자 지시로 이번에는 서버 배포를 하지 않는다. M0-05 전체 완료가 아니다.
+- 원본: [TASKS M0-05](TASKS.md#m0-05-첫-배포), 사용자 보충 지시와 범위 조정. TASKS 수용 기준 자체는 바꾸지 않는다.
+- 승인: 권장안 승인 후 M0-04 완료까지 대기. 사용자의 M0-04 검증 완료 통보와 착수 지시 후 시작했다.
+- 선행 확인: 최신 dev `9f1381f8c2c74658421a4b6c3f718e0bf638f98d`, 작업 트리 clean. [M0-04 PR #1](https://github.com/songstone/four-lane-auction/pull/1)의 최종 검증 본문, [dev 성공](https://github.com/songstone/four-lane-auction/actions/runs/40453469067), [실패 실행](https://github.com/songstone/four-lane-auction/actions/runs/40455257375)의 backend 실패·frontend 성공, [PR #2](https://github.com/songstone/four-lane-auction/pull/2)의 미머지 종료를 조회했다. 브랜치 보호도 재조회했다. 아래 M0-04 절의 미완료 표기는 당시 커밋의 스냅샷이며 최종 원격 증거는 PR #1 본문에 있다.
+- 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction`, 별도 worktree 없음. 최신 origin/dev에서 `feature/M0-05-first-deploy` 생성.
+- 결정: [ADR-005](adr/ADR-005-M0-05-first-deploy.md). 서울 t3.medium 제안, 공개 GHCR·수동 배포, 앱의 SPA 서빙, 독립 prod compose, app stop→start. app·mysql만 포함한다.
+- **TLS는 M6-01로 연기**했다. 이번 절차의 검증 주소는 `http://<host>`, WebSocket은 `ws://<host>/ws`다. TASKS의 HTTPS curl 예시는 이번에 HTTP로 검증하도록 사용자 승인받았다. 외부 HTTP 자체도 아직 NOT_RUN이다.
+- app 메모리 상한 1,536MiB·JVM `-Xms256m -Xmx768m`, mysql 1,536MiB·buffer pool 512MiB는 초기 배치 예산이다. 서버 수용량·지연·처리량 측정 결과가 아니다. 측정 인스턴스는 M4-03에서 정한다.
+
+### 구현과 검증 계획
+
+- Dockerfile: Node 빌드 → Corretto 21 빌드 → 비root Java 실행. Docker 빌드에서만 프론트 dist를 JAR static에 포함한다. 소스 SHA·이미지 태그는 OCI label에 기록한다.
+- `.dockerignore`: backend·frontend 빌드 입력만 허용하고 .env·로컬 설정·빌드 결과를 제외한다.
+- `docker-compose.prod.yml`: 독립 파일, app·mysql, app 포트 하나, 관리 포트 내부 loopback, MySQL publish 없음. prod DB·Origin은 서버 환경변수 필수값이다.
+- `deploy/.env.example`: 실제 비밀번호는 빈 값. `.env` 제외 규칙을 그대로 사용한다.
+- [DEPLOY](DEPLOY.md): SHA 태그와 정식 v0.1.0의 연결, 명령별 빌드·승인 후 push·서버 설정·pull·stop→start·검증·진단·이전 이미지 재배포를 적었다.
+- 기존 로컬 compose·bootRun·Vite·API·EVENTS·스키마·CI 워크플로는 수정하지 않는다. 단일 인스턴스 가드는 M3-09, Prometheus·Grafana는 M4-01, Actions 자동 배포는 M6-01이다.
+- 로컬 빌드·이미지 실행 증거는 검증 후 이 절에 추가한다. 이미지 push·Git push·PR 생성·AWS 명령은 실행하지 않은 상태다.
+
+### 준비 단계 로컬 실행
+
+| 검사 | 결과 | 증거 |
+|---|---|---|
+| backend clean build | PASS. 14 actionable tasks, 13 executed·1 up-to-date. 시간 출처 검사 29파일·위반 0 | `output/m0-05-backend-build.log` |
+| 실제 JUnit XML 검증 | PASS. UTC 70회·서울 70회, 각각 MySQL 35회, failures/errors/skipped 0. 같은 테스트를 두 JVM에서 실행한 횟수 | `output/m0-05-test-summary.md`, `backend/app/build/test-results/{test,testSeoul}/TEST-*.xml` |
+| npm ci·lint·typecheck·build | PASS, 기존 lockfile 유지. npm audit 0 vulnerabilities | `output/m0-05-{npm-ci,lint,typecheck,frontend-build}.log` |
+| Compose 구성 확인 | PASS. app·mysql, 관리 loopback, mysql publish 없음, 별도 로컬 bind/port 적용, 각 1,536MiB 상한 | `output/m0-05-compose-checks.json` |
+| 필수값 거부 | PASS. IMAGE_TAG·DB명·사용자·앱/루트 비밀번호·DB_URL·Origin을 하나씩 빼면 config 실패. 미설정 샘플도 실패 | 위 Compose 결과. 정적 구성 검증이며 앱 실행 증거는 아님 |
+| 베이스 실행 확인 | Corretto 21.0.13, curl 8.21.0 포함 확인. 추가 OS 패키지 설치 없음 | 고정 digest의 임시 컨테이너 실제 실행 |
+
+검증 환경: Windows, 로컬 Corretto 21.0.10, Gradle 9.8.2, Node 24.11.1·npm 11.6.2, Docker Engine 28.5.1·Compose 2.40.0. 실행 중이던 이 checkout의 bootRun·Vite만 종료해 파일 잠금을 피했고 이미지 검증 후 복원할 예정이다. 기존 로컬 MySQL과 다른 프로젝트 컨테이너는 유지했다.
+
+### TASKS 수용 기준과 남은 서버 검증
+
+| M0-05 수용 기준 | 이번 범위의 상태 | 나중에 필요한 증거 |
+|---|---|---|
+| 배포 주소 홈·배지·WebSocket | 서버 **NOT_RUN**. 로컬 이미지 검증 예정 | 실제 배포 주소의 REST 200·홈·STOMP CONNECTED |
+| 관리 포트 외부 비공개 | 서버 **NOT_RUN**. publish·바인딩 로컬 확인 예정 | 실제 서버 publish·SG 조회와 외부 TCP 접속 실패 |
+| 비밀번호 등 서버 환경변수 | 서버 **NOT_RUN**. 필수 변수·Git 제외 로컬 확인 예정 | 실제 서버 환경 공급·파일 권한 확인. 비밀값 원문 공유 불필요 |
+| 명령 단위 배포 문서 | DEPLOY 작성, 로컬 검증 예정 | 서버 단계 실행 결과와 HTTP 검증 기록 |
+
+M0 완료 기준 6·7의 정식 v0.1.0 배포, TLS·WSS, EC2 자원 확인은 **NOT_RUN**이다. 실제 서버 단계는 사용자가 준비한 뒤 DEPLOY 5절부터 결과를 확인하며 진행한다.
+
 ## M0-04 CI
 
 - 작업일: 2026-10-27 (Asia/Seoul)

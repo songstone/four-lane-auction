@@ -1,0 +1,17 @@
+# Allow only build inputs. Server files, .git and output/ never enter the context.
+**
+!Dockerfile
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+**/.env
+**/.env.*
+**/application-local.yml
+**/application-local.yaml
+**/.gradle/
+**/build/
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
+**/*.log
