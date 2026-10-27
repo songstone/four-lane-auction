@@ -26,6 +26,7 @@
 - prod의 DB 정보·WebSocket Origin은 서버 환경변수로만 공급한다. 빈 필수값은 Compose 해석 때 거부한다. 서버 .env는 커밋하지 않는다. 샘플 비밀번호는 비워 둔다.
 - 이미지 실행은 uid/gid 10001이고, Java가 PID 1이다. Corretto 베이스의 curl로 컨테이너 내부 health를 검사한다. 새 Java/npm 의존성은 없다. 컨테이너 health 확인 도구의 필요성은 계획 승인에 포함됐다.
 - Corretto 최소 이미지에는 xargs가 없어 최초 빌드의 Gradle 셸 스크립트가 실패했다. 추가 OS 패키지 대신 같은 Wrapper JAR의 JVM 진입점을 실행한다. Wrapper 버전·배포 SHA 검증과 프로젝트 Gradle 설정은 유지한다.
+- 이어진 빌드에서 실행용 headless 이미지에 javac가 없음을 확인했다. 빌드 단계만 Corretto JDK 이미지로 분리하고 실행 단계는 headless를 유지한다. bootJar가 만든 단일 JAR를 복사해 정식 릴리스의 버전 이름에도 대응한다.
 - 기존 app을 stop하고 정지 확인 후 새 app을 start한다. 구 이미지 재배포도 같은 순서다. 이미지 되돌리기는 DB 마이그레이션을 되돌리지 않는다.
 - bootRun·npm run dev·로컬 compose·API·EVENTS 계약·스키마는 바꾸지 않는다. SPA의 미래 하위 라우트 fallback은 현재 홈 연결 확인 작업 범위에 넣지 않는다. API 404는 JSON으로 유지한다.
 - 로컬 이미지 검증과 AWS 검증을 구분한다. 서버 미구성 상태에서 보안 그룹·외부 접속·EC2 메모리 확인을 PASS로 적지 않는다. 측정 인스턴스와 성능 설정은 M4-03에서 정한다.

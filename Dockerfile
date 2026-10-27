@@ -7,14 +7,15 @@ RUN --mount=type=cache,target=/root/.npm node --version && npm --version && npm 
 COPY frontend/ ./
 RUN npm run lint && npm run typecheck && npm run build
 
-FROM amazoncorretto:21-al2023-headless@sha256:212faf5f8f93d8f4854a3d89528834d11ad2d685de80721d4d24ac2fdd3e379e AS backend-build
+FROM amazoncorretto:21-al2023@sha256:1a307926702559b0086a5c4d339eaafa9c992b3e8ba54201ac8ebbde31d22f0b AS backend-build
 WORKDIR /build/backend
 COPY backend/ ./
 # Only the container build receives static assets; bootRun and Vite stay separate.
 COPY --from=frontend-build /build/frontend/dist/ app/src/main/resources/static/
 RUN --mount=type=cache,target=/root/.gradle \
-    java -jar gradle/wrapper/gradle-wrapper.jar --no-daemon :app:bootJar --console=plain \
-    && cp app/build/libs/*-SNAPSHOT.jar /build/app.jar
+    javac -version \
+    && java -jar gradle/wrapper/gradle-wrapper.jar --no-daemon :app:bootJar --console=plain \
+    && cp app/build/libs/*.jar /build/app.jar
 
 FROM amazoncorretto:21-al2023-headless@sha256:212faf5f8f93d8f4854a3d89528834d11ad2d685de80721d4d24ac2fdd3e379e AS runtime
 ARG VCS_REF
