@@ -1,0 +1,4 @@
+# Keep the Unix wrapper runnable even with Windows core.autocrlf enabled.
+backend/gradlew text eol=lf
+backend/gradlew.bat text eol=crlf
+*.jar binary

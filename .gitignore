@@ -1,0 +1,22 @@
+# Local secrets and overrides
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+
+# Build output
+.gradle/
+**/build/
+node_modules/
+dist/
+*.tsbuildinfo
+output/
+.playwright-cli/
+
+# Editors and logs
+.idea/
+.vscode/
+*.iml
+*.log
+.DS_Store
