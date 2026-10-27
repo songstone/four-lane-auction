@@ -119,7 +119,7 @@ PRD는 자동 시작, 마감, 소프트 클로즈, 간격, 정지·재개, 결�
 
 ### 재현 방법
 
-- **정적 검사**: 프로덕션 코드에서 `Clock` 없이 `Instant.now()`, `LocalDateTime.now()`, `System.currentTimeMillis()`를 부르는 곳을 찾는 테스트(ArchUnit 규칙 또는 빌드 단계의 검색). 스키마의 `DEFAULT CURRENT_TIMESTAMP`, 쿼리의 `NOW()`도 찾는다.
+- **정적 검사**: Gradle 빌드 단계의 검색으로 운영 Java의 `Instant.now()`, `LocalDateTime.now()`, `System.currentTimeMillis()`, `new Date()`와 SQL·쿼리의 `NOW()`·`CURRENT_TIMESTAMP`를 검사한다 (M0-02 사용자 승인, 2026-10-27, [ADR-002](adr/ADR-002-M0-02-schema-and-time-sources.md)). `test`와 `build`에 포함한다. 아래 해결 후보의 판단·실행 방식, 클라이언트 시계, 시계 점프 선택과는 별개의 결정이다.
 - **정밀도 테스트** (MySQL 통합): 소수 초가 있는 시각으로 입찰을 저장하고 다시 읽어 같은 값인지 확인한다. 시나리오 2(반올림으로 마감 경계를 넘는 경우)를 그대로 테스트로 만든다.
 - **시간대 테스트**: JVM 기본 시간대를 `UTC`로 두고 `+09:00`이 붙은 예정 시각으로 회차를 만든 뒤, `FakeClock`을 그 순간으로 옮겨 자동 시작되는지 본다.
 - **클라이언트 시계 오차**: 브라우저 테스트에서 `Date.now()`를 ±3초, ±5분 어긋나게 바꾸고, 화면에 표시된 남은 시간과 서버 기준 남은 시간의 차이를 잰다.

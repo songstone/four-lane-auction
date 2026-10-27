@@ -317,7 +317,7 @@ backend/
 4. 쓰기는 자기 도메인 테이블에만 한다. 예외는 PRD가 원자성을 요구하는 레인 전이 하나다. 마감과 거래 생성은 한 트랜잭션이어야 하므로(CH-09 시나리오 1), `auction.runtime`의 `JpaLaneStore`가 트랜잭션 안에서 `trade`의 생성 메서드를 부른다. 호출 방향은 `auction → trade`이고 반대 방향은 없다.
 5. 조회 전용 쿼리(내 입찰 내역, 내 거래)는 화면에 필요한 만큼 다른 도메인 테이블을 조인해도 된다. 결과는 읽기 전용 DTO로만 나간다.
 6. 도메인 패키지끼리 순환 의존하지 않는다. 허용 방향: `bid → auction`, `auction → trade, notification, audit`, `trade → member, notification`, `realtime → auction.runtime`(스냅샷 조회). 모든 패키지는 `global`을 쓸 수 있다.
-7. 위 규칙과 9장의 시간 출처 규칙은 CI 정적 검사로 확인한다. 도구는 CH-01에 적은 "ArchUnit 규칙 또는 빌드 단계의 검색" 중에서 고른다.
+7. 위 규칙과 9장의 시간 출처 규칙은 CI 정적 검사로 확인한다. 시간 출처 검사는 Gradle 빌드 단계의 검색으로 한다 (M0-02 사용자 승인, 2026-10-27, ADR-002). Java 호출과 SQL·쿼리를 함께 검사한다. 그 밖의 의존 규칙 검사 도구는 아직 정하지 않았다.
 
 ### 3.4 포트 (교체 지점)
 
@@ -561,7 +561,8 @@ CREATE TABLE lane (
     CONSTRAINT ck_lane_no CHECK (lane_no BETWEEN 1 AND 4),
     CONSTRAINT ck_lane_status CHECK (status IN ('READY', 'RUNNING', 'PAUSED', 'FINISHED')),
     CONSTRAINT ck_lane_pause CHECK (
-        (status = 'PAUSED' AND pause_cause IN ('OPERATOR', 'SESSION_BULK', 'RECOVERY')
+        (status = 'PAUSED' AND pause_cause IS NOT NULL
+                           AND pause_cause IN ('OPERATOR', 'SESSION_BULK', 'RECOVERY')
                            AND (paused_remaining_ms IS NULL OR paused_remaining_ms > 0))
         OR (status <> 'PAUSED' AND pause_cause IS NULL AND paused_remaining_ms IS NULL))
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
@@ -595,7 +596,8 @@ CREATE TABLE lot (
     CONSTRAINT ck_lot_prices CHECK (start_price > 0 AND start_price % 1000 = 0
                                     AND reserve_price >= start_price AND current_price >= start_price),
     CONSTRAINT ck_lot_unsold_reason CHECK (
-        (status = 'UNSOLD' AND unsold_reason IN ('NO_BID', 'RESERVE_NOT_MET', 'FORCE_CLOSED'))
+        (status = 'UNSOLD' AND unsold_reason IS NOT NULL
+                           AND unsold_reason IN ('NO_BID', 'RESERVE_NOT_MET', 'FORCE_CLOSED'))
         OR (status <> 'UNSOLD' AND unsold_reason IS NULL)),
     CONSTRAINT ck_lot_sold_winner CHECK (status <> 'SOLD' OR highest_bidder_id IS NOT NULL),
     CONSTRAINT ck_lot_last_bid CHECK ((bid_count = 0 AND last_bid_id IS NULL)
@@ -1709,6 +1711,7 @@ PRD에 없어서 넣지 않은 보안 기능(로그인 시도 제한, 이미지 
 | 과제 | 이 문서가 그린 방식 | 구분 | 바뀌면 고칠 곳 |
 |---|---|---|---|
 | CH-01 (가) 시간 출처와 테스트 | 판단과 실행을 나누고, `Clock`과 `TimerScheduler`를 포트로 둔다 | 잠정안 | 5.1 |
+| CH-01 시간 출처 정적 검사 | Gradle 빌드 단계 검색으로 운영 Java와 SQL·쿼리의 금지 시간 출처를 검사한다 (ADR-002). 엔진의 판단·실행 방식 선택과는 별개다 | 결정됨 (M0-02 사용자 승인, 2026-10-27) | 3.3-7, 9 |
 | CH-01 (나) 클라이언트 카운트다운 | 계약(`deadlineAt` + `serverTime`)이 후보 B1·B3를 모두 지원한다. 입찰 응답에는 `serverTime`을 넣지 않는다 | 미결. 응답 시각 제외는 결정됨 (리뷰) | 6.5, 7.7 |
 | CH-01 (다) 서버 시계 점프 | 정하지 않음. 레인 안의 처리 시각만 뒤로 가지 않게 고정한다 (R13) | 미결 [OQ-35]. R13은 결정됨 (리뷰) | 5.2, 9 |
 | CH-02 (가) 상태 머신 표현 | `sealed` 명령·이벤트 + 상태 머신 클래스 | 잠정안 | 5.3 |
