@@ -107,7 +107,7 @@
 | 영속 | Spring Data JPA | 조회 전용 쿼리는 `@Query`(JPQL)와 DTO 프로젝션으로 쓴다. QueryDSL은 확정 스택에서 뺐다 (결정됨 (리뷰)). 쓰는 곳이 조회 2~3개뿐이라 Boot 4·Hibernate 7 호환 확인과 애노테이션 처리 설정만 늘어난다. 조건을 조합하는 동적 조회가 여러 개 생기면 다시 본다 (CHALLENGES 부록 A) |
 | DB | MySQL 8.4 LTS (제안) | `CHECK` 제약을 강제하고(8.0.16부터), `DATETIME(3)`을 쓴다 |
 | 마이그레이션 | Flyway | MySQL 지원 모듈(`flyway-mysql`)이 따로 필요하다 |
-| 인증 | Spring Security + JWT | M1-01 승인: Boot 4.1.2 Resource Server와 `spring-security-oauth2-jose`(Nimbus), 공용 JwtDecoder를 쓴다 (ADR-006). 별도 JWT 라이브러리 없이 만료 검증기(`JwtTimestampValidator`)에 주입한 `Clock`을 넣을 수 있다 (9장 R10) |
+| 인증 | Spring Security + JWT | M1-01 승인: Boot 4.1.2 Resource Server와 `spring-security-oauth2-jose`(Nimbus), 공용 JwtDecoder를 쓴다 (ADR-006). `AccessTokenValidator`가 주입 Clock으로 필수 claim과 만료 정각을 검사한다 (9장 R10). 기본 60초 유예를 사용하지 않는다 |
 | 실시간 | Spring WebSocket + STOMP, Simple Broker | SockJS는 쓰지 않는다 (제안). k6와 브라우저 모두 순수 WebSocket을 쓴다 |
 | API 문서 | springdoc-openapi-starter-webmvc-api 3.2.0 | M0-03 사용자 승인. Boot 4.1.2 대응. REST만 문서화한다. 계약의 원본은 [API.md](API.md)이고, 생성된 OpenAPI가 그와 같은지 계약 테스트로 본다. STOMP 메시지는 [EVENTS.md](EVENTS.md)에 둔다 |
 | API 클라이언트 생성 | Orval 8.45.0 + 브라우저 Fetch | M0-03 사용자 승인 ([ADR-003](adr/ADR-003-M0-03-api-generation-and-connections.md)). 실행 중인 백엔드 `/v3/api-docs` → `frontend/src/api/generated/`. 생성 코드 커밋, 화면의 직접 fetch 금지 |
@@ -397,7 +397,7 @@ erDiagram
 - 이미 적용한 파일은 고치지 않는다. 바꿀 것이 생기면 새 버전 파일로 낸다.
 - 실제 적용은 V1~V5다. 이후 파일은 예약하지 않고 적용 순서대로 V6부터 매긴다 (ADR-002, ADR-006). 아래 SQL 예시의 초기 계획 번호는 그대로 실제 파일명으로 쓰지 않는다.
 - M1-01 승인: ADMIN은 기본 비활성 `admin-seed` 프로필의 Java 시드로 만든다. 환경변수 이메일·BCrypt 해시가 필수이며 기존 USER 승격과 기존 ADMIN 해시 덮어쓰기는 금지한다 (ADR-006).
-- **ADMIN 계정**은 마이그레이션이나 시드 데이터로만 만든다 (AC-01-4). 비밀번호 해시를 저장소에 커밋하지 않도록, 계정 행은 배포 환경 값(이메일, 비밀번호 해시)을 받아 넣는다. 방식은 위 admin-seed로 결정했다. 로컬 개발용 계정은 로컬 프로필에서만 도는 별도 위치에 둔다.
+- **ADMIN 계정**은 시드로만 만든다 (AC-01-4). 비밀번호 해시를 저장소에 커밋하지 않도록 환경 값(이메일, 비밀번호 해시)을 받아 넣는다. 개발은 `local,admin-seed`, 운영은 `prod,admin-seed`를 명시 실행하고 정상 앱에는 시드 프로필을 켜지 않는다.
 - 시연·부하 테스트용 대량 데이터(회원, 출품물)는 마이그레이션에 넣지 않는다 [OQ-27].
 
 ### 4.4 SQL

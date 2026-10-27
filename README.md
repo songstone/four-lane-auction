@@ -27,6 +27,6 @@ npm ci
 npm run dev
 ```
 
-화면은 [localhost:5173](http://localhost:5173), 앱은 [localhost:8080](http://localhost:8080), 상태 확인은 [관리 포트 health](http://localhost:8081/actuator/health)입니다. `.env.example`은 공개된 로컬 기본값과 선택적 재정의 항목입니다. Compose의 `.env`는 bootRun이 자동으로 읽지 않으므로, DB 기본값을 바꾸면 같은 값을 bootRun 프로세스 환경변수로도 전달합니다.
+화면은 [127.0.0.1:5173](http://127.0.0.1:5173), 앱은 [127.0.0.1:8080](http://127.0.0.1:8080), 상태 확인은 [관리 포트 health](http://127.0.0.1:8081/actuator/health)입니다. `.env.example`은 공개된 로컬 기본값과 선택적 재정의 항목입니다. Compose의 `.env`는 bootRun이 자동으로 읽지 않으므로, DB 기본값을 바꾸면 같은 값을 bootRun 프로세스 환경변수로도 전달합니다.
 
 문서는 [docs/TASKS.md](docs/TASKS.md), [PRD](docs/PRD.md), [아키텍처](docs/ARCHITECTURE.md), [REST 계약](docs/API.md), [이벤트 계약](docs/EVENTS.md), [진행·검증 기록](docs/PROGRESS.md), [ADR](docs/adr/)에 있습니다. 이 README는 M0-01 초안이며 정식 README는 M6-02에서 작성합니다.

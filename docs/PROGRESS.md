@@ -1,5 +1,139 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-01 회원가입·로그인·재발급·로그아웃
+
+- 작업일: 2026-10-27 (Asia/Seoul).
+- 상태: **완료 (M1-01 범위, 아래 수용 기준과 실제 실행 증거 기준)**. push·PR 생성·원격 CI는 아직 실행하지 않았다.
+- 원본: TASKS 0장·M1-01·9장 B-5, PRD M-01·AC-01-1/2/4/5·P-02, API 1.3·3장, ARCH R10·11장, CH-01. AC-01-3 입찰 거절은 M2-06이다.
+- 시작 SHA: `2ade8160d6b6c8160d905f01e5fd5dc6264497d8`. fetch 뒤 dev=origin/dev, clean 상태에서 `feature/M1-01-auth` 생성. 직접 선행 M0-03의 `51b591500624a696e68b80ea4d13e5480c4f5e74` 포함을 Git ancestry와 완료 기록으로 확인했다.
+- 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction`, 별도 worktree 없음.
+- 승인: 사용자가 권장안 전체와 비밀번호 UTF-8 72바이트 제한, Refresh 절대 7일, member_warning V5 선반영을 명시 승인했다. 구현·실제 검증·기록·로컬 커밋까지 승인, **push·PR 생성은 별도 승인**이다.
+- 결정 기록: [ADR-006](adr/ADR-006-M1-01-auth.md), 제품 OQ-49~51. API 0.4를 BE보다 먼저 반영했다. CHALLENGES의 새 미결 후보는 선택하지 않았다.
+- 로컬 커밋: `d255571` 결정·계약, `4f13ec2` BE, `fcbc0c3` GEN, `f8284f3` FE. 최종 증거 문서는 후속 docs 커밋이다. 원격 push·PR·머지·태그는 실행하지 않았다.
+
+### 승인한 구현과 경계
+
+- Nimbus Resource Server와 공용 JwtDecoder. HS256 키는 Base64 환경변수이며 256비트 이상이어야 한다. 서명뿐 아니라 iss·aud·sub·role·token_use·iat·exp를 검증한다. M1-02는 이 Decoder를 그대로 사용한다.
+- Access 15분, Refresh 로그인부터 절대 7일. 회전해도 최초 expires_at을 유지한다. Access는 JWT NumericDate에 맞춰 발급 시각을 초로 자르고, 응답과 JWT의 만료는 같은 Instant다. 둘 다 주입 Clock으로 판단하고 만료 정각부터 무효, 유예 0초다.
+- Refresh 해시 행의 비관적 잠금을 얻은 뒤 Clock을 읽고, 이전 폐기와 새 행 저장을 application 트랜잭션 하나에서 처리한다. 컨트롤러의 쿠키·응답 작성은 커밋 성공 뒤다. 같은 토큰의 경합은 200 한 건·401 한 건이며, 실패 응답은 쿠키를 덮어쓰지 않는다.
+- BCrypt와 API 0.4의 입력 검증: 비밀번호 8~64 코드 포인트·UTF-8 최대 72바이트, 닉네임 2~20 코드 포인트·중복 허용. USER 가입 고정, ADMIN은 명시적 admin-seed만 허용한다.
+- V5는 member_warning의 실제 조회 원본을 만든다. member FK와 trade_id 유니크를 적용했다. trade가 아직 없으므로 **M3-07에서 fk_warning_trade 추가가 필수**다. 경고 쓰기·패널티 정책·거래 구현은 넣지 않았다. V1~V4 수정은 없다.
+- FE는 생성 함수만 호출한다. 탭 내부의 진행 중 Promise와 요청 당시 토큰 비교로 늦은 401도 합류시킨다. 탭 사이는 Web Locks `auth-refresh`로 직렬화하고 로그인·로그아웃도 같은 락을 쓴다. Access는 메모리, 회원 데이터는 TanStack Query의 `['me']` 캐시다. 토큰 내용은 해석하지 않는다.
+- 익명 STOMP 진단과 토큰 CONNECT 임시 거절은 그대로다. 인증 CONNECT·개인 큐·신원 전환은 M1-02다. 관전 진입에 맞춘 연결 수명 정리는 M1-08이다.
+
+### 단계별 실제 실행 증거
+
+| 단계 | 결과와 실제 실행 | 증거 |
+|---|---|---|
+| BE | `./gradlew.bat clean build` 성공. 14 actionable tasks 모두 실행. 시간 출처 55파일, 위반 0 | `output/m1-01/be-clean-build.log` |
+| JUnit | UTC test 103회 + 별도 JVM 서울 testSeoul 103회 = 총 206회 실행, 각 failures/errors/skipped 0. 같은 103개를 두 JVM에서 실행한 횟수다 | `output/m1-01/test-summary.md`, app/build/test-results의 XML |
+| 실제 MySQL | JVM마다 기존 Schema/Session 35회 + 신규 Auth 13회·Concurrency 2회 = 50회. CI 검증기의 MySQL 35 표시는 기존 필수 두 클래스의 분류이며 신규 두 클래스도 실제 Testcontainers를 사용한다 | 위 XML과 MySqlIntegrationTest 상속 관계 |
+| 실제 TCP 경합 | JVM마다 HTTP 경합 500회. 각 회 같은 쿠키 두 요청 중 200 한 건·401 한 건, 활성 행 한 개, 실패 응답 Set-Cookie 없음. 합계 1,000회 경합. 마지막 승자의 쿠키로 추가 재발급 200 | RefreshRotationConcurrencyTest |
+| ADMIN 시드 | 실제 local,admin-seed 비웹 bootRun이 성공·종료하고 이후 정상 bootRun에서 ADMIN 로그인 200. 기존 USER 승격 거절·기존 ADMIN 해시 유지·재실행은 MySQL 통합 테스트에서 확인 | `output/m1-01/seed-admin.log`, AuthHttpIntegrationTest |
+| 실제 curl | 가입→로그인→me→회전→구 쿠키 거절→로그아웃→재발급 거절, 공개 경로·오류·키·로그 등 22항목 PASS | `output/m1-01/curl-checks.json` |
+| GEN | 실제 8080/v3/api-docs에서 Orval 8.45.0으로 생성, typecheck 성공, 생성 코드 별도 커밋. 수동 수정 없음 | `output/m1-01/gen-api.log`, `gen-typecheck.log`, `fcbc0c3` |
+| FE | 최종 lint·typecheck·build 성공. 새 npm 의존성 없음. 수기 fetch와 토큰의 localStorage/sessionStorage 사용 0 | `output/m1-01/final-{lint,typecheck,frontend-build}.log` |
+| 화면 | 실제 Chrome+bootRun+Vite의 18항목 PASS. 응답 합성 없이 가입 201·필드 오류 400·중복 409·로그아웃 204·내 정보 재조회 200을 확인 | `output/playwright/m1-01/ui-evidence.json` |
+| 자연 만료·401 합류 | 실제 16분(960,018ms)을 기다린 뒤 보류한 인증 요청 3개를 전달. 실제 401 세 건 → Refresh 한 건 200 → 원래 요청 세 건 200, 로그인 유지·JS 예외 0 | `output/playwright/m1-01/natural-expiry.json`, `natural-expiry-run.log` |
+| 재발급 중 로그아웃 | 실제 Refresh 200 응답을 보류한 동안 UI 로그아웃. held 1·pending 1, 늦은 복구 결과 수락 false, 서버 로그아웃 204·쿠키 없음·새로고침 비로그인 | `output/playwright/m1-01/logout-refresh-evidence.json` |
+| 키 설정 | 키 없는 별도 JAR 기동 실패. prod Compose는 키 없으면 거부, 설정하면 config 통과. 컨테이너 새 이미지 실행 증거는 아니다 | `missing-key-startup.json`, `compose-key-checks.json` |
+| 민감값 | 실제 자격·키·토큰/해시 13개 값을 seed/bootRun 로그와 Git 추적 파일에서 검색해 일치 0. 기본 애플리케이션 로그 범위다 | `output/m1-01/credential-scan.json` |
+
+engine은 아직 도메인 코드가 없어 test NO-SOURCE이며 엔진 기능 검증을 뜻하지 않는다. 새 JAR에는 인증 클래스와 의존성이 포함되지만, 새 Docker 이미지 빌드·서버 배포·운영 TLS 검증은 NOT_RUN이다.
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 근거 |
+|---|---|---|
+| AC-01-1 로그인 시 두 토큰 | PASS | BCrypt 저장·로그인·쿠키 속성·DB SHA-256 검사, 실제 curl과 UI의 로그인 200 |
+| AC-01-2 Access 만료 후 재발급 | PASS | 주입 Clock을 16분 이동한 Spring Security 필터·MySQL 테스트. 만료 Access로 me/공개 목록 401, 유효 Refresh로 200, 새 Access로 me 200. 별도 JwtClockTest는 2020년 Clock을 써 실제 벽시계 사용을 검출 |
+| AC-01-4 ADMIN 가입 불가 | PASS | role=ADMIN을 보낸 실제 가입 응답·DB가 USER. ADMIN 시드는 별도 프로필·환경변수만 사용 |
+| AC-01-5 로그아웃 유지 | PASS | 실제 204·쿠키 삭제·구 쿠키 401, 두 탭 새로고침 뒤 비로그인. 기존 Access는 여전히 유효한 것도 검증 |
+| 폐기 Refresh 거절 | PASS | 회전 구 쿠키·로그아웃 쿠키·없는/잘못된 쿠키 모두 401. 구 쿠키 실패에 Set-Cookie 없음 |
+| 공개 API의 만료 토큰 | PASS | Clock 조작 필터 통합에서 익명 200·만료 401. 실제 curl의 위조 토큰도 401. 원래 공개 경로·M0-03 테스트 모두 유지 |
+| 비밀번호·토큰 로그 비노출 | PASS | AuthHttpIntegrationTest의 로그인·회전·거절·로그아웃 실제 토큰 캡처, AuthControllerTest의 잘못된 JSON·필드 오류·인증 실패·민감 예외 캡처. 실제 기동 로그 검색도 별도 PASS |
+| Access/Refresh Clock·정각 | PASS | Access 만료 1ms 전/정각, Refresh 7일 1ms 전/정각/직후. 대기 중 만료된 Refresh는 잠금 해제 뒤 거절 |
+| 동일 Refresh 동시 회전 | PASS | 두 JVM의 실제 MySQL HTTP 경합 각 500회. 임시 DB CHECK로 신규 저장 실패를 주입하면 기존 폐기도 롤백되어 같은 구 토큰이 다시 성공 |
+| 같은 탭 여러 401의 재발급 1회 | PASS | 독립된 headless Chrome의 실제 자연 만료. 요청 3개 401·Refresh 1개 200·재시도 3개 200, 로그인 유지 |
+| 탭 간 Web Locks | PASS | 두 탭 동시 새로고침 5회, Refresh 10건 모두 200·동시 최대 1. 실제 첫 응답 보류 중 held 1·pending 1·서버 요청 1 확인 |
+
+### 화면 검증의 범위와 재현 중 수정
+
+- 자연 만료 검증은 2026-10-27 16:14:08.532 KST에 시작했다. 서버 응답의 Access 만료는 16:29:08.000, 요청 전달은 16:30:08.549였다. 서버 Clock·브라우저 Date·응답 본문/상태를 바꾸지 않고 실제 요청 전송만 보류했다. Cookie는 유효한 실제 로그인에서 받았고, 애플리케이션은 Access를 브라우저 메모리에만 보관했다. Chrome은 실제 실행 버전 155.0.8059.86이다.
+
+- 1440×960과 390×844에서 실제 화면을 캡처하고 직접 열어 배치·줄바꿈을 확인했다. 모바일 내 정보와 로그인 문서 폭은 viewport 폭과 같았다. USER의 내 정보·ADMIN의 운영자 계정 메뉴, 원래 화면 복귀, 로그인 유지, 로그아웃 뒤 두 탭의 다음 복구 실패, JS 영속 저장소 비사용을 확인했다.
+- 계정 조회의 전송 실패는 브라우저에서 요청을 거절해 주입했다. 오류 화면과 다시 조회를 확인한 뒤 실제 backend 200으로 복구했다. 로딩은 실제 Refresh 200 응답 전달만 보류해 관찰했다. 서버 응답 본문·상태를 만들어서 통과시키지 않았다.
+- 초기 트리거 기반 INSERT 실패 주입은 MySQL binary logging의 SUPER 권한 요구로 실패했다. 권한을 올리지 않고 테스트 DB의 임시 CHECK 제약으로 바꿔 롤백을 재현했다. 운영 마이그레이션에 테스트 제약을 넣지 않았다.
+- 로그 캡처에 MockMvc의 실패 요청 덤프가 섞이는 문제를 발견해 인증 테스트는 HTTP 비밀 덤프를 끄고 실제 애플리케이션 로그를 검사한다. 테스트 삭제·skip·필터 비활성화는 없다.
+- 실제 화면에서 로그아웃의 홈 이동과 Account의 비로그인 redirect가 겹치는 경합을 수정했다. redirect 전에 현재 hash가 여전히 /me인지 확인하며, 수정 후 홈 유지·새로고침을 검증했다.
+- 초기 CLI 브라우저 검증은 잔류 라우팅 후크와 탭이 about:blank로 바뀌는 문제로 증거를 확정할 수 없었다. 독립된 headless Chrome 프로세스로 격리해 화면 검증을 다시 실행했다. 최초 실패를 PASS로 세지 않았다.
+- 브라우저의 예상한 400/401/409와 의도한 전송 실패는 네트워크 콘솔에 남는다. 최종 화면 검증의 uncaught JavaScript exception은 0이었다. 모든 콘솔 오류가 0이었다는 뜻은 아니다.
+
+### 직접 확인하는 방법
+
+기존 bootRun을 종료한 뒤 clean 검사를 한다. 아래 명령은 PowerShell 7 기준이다. Docker의 로컬 mysql 볼륨과 다른 프로젝트 컨테이너는 삭제하지 않는다. 기존 검증 서버를 그대로 볼 때는 [127.0.0.1:5173](http://127.0.0.1:5173/)을 연다. localhost와 127.0.0.1을 섞으면 Origin·쿠키 저장소가 달라지므로 여기서는 127.0.0.1로 통일한다.
+
+```powershell
+# 저장소 루트
+docker compose up -d mysql
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10' # 자신의 JDK 21
+$env:JWT_SECRET_BASE64 = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+cd backend
+./gradlew.bat clean build
+./gradlew.bat :app:bootRun
+```
+
+```powershell
+# 다른 터미널, 저장소 루트
+cd frontend
+npm ci
+npm run lint
+npm run typecheck
+npm run build
+npm run dev
+```
+
+1. /#/me에 비로그인으로 들어가 로그인으로 이동하는지 확인한다. 회원가입에서 짧은 닉네임·비밀번호와 한글 25자 비밀번호의 오류를 본다. 유효한 가입 후 원래 내 정보 화면으로 돌아오는지 확인한다. 기존 이메일 가입은 409 안내를 표시한다.
+2. 새로고침 뒤 로그인 유지, 새 탭에서도 로그인 유지, 로그아웃 뒤 새로고침과 다른 탭의 다음 새로고침에서 비로그인을 확인한다.
+3. 두 탭에서 Network의 refresh를 관찰하며 동시에 새로고침한다. 탭당 1건씩 총 2건은 정상이며, **동시에 진행 중인 요청은 1건**이어야 한다. 응답 하나를 보류하는 브라우저 자동화에서 `await navigator.locks.query()`로 held/pending의 auth-refresh를 확인할 수 있다.
+4. 같은 탭의 401 합류는 로그인 후 세 회차 조회를 실제 만료까지 보류한 뒤 함께 전달해 재현한다. 만료된 세 요청 401 → refresh 한 건 200 → 원래 세 요청 200이 기준이다. DevTools에서 토큰·쿠키 원문을 공유하지 않는다.
+5. Application에서 Refresh 쿠키의 HttpOnly·Strict·/api/auth와 local의 Secure=false를 확인한다. localStorage/sessionStorage에는 토큰이 없어야 한다. 운영 Secure=true 강제는 백엔드 테스트에서 확인했으며 실제 HTTPS 브라우저는 NOT_RUN이다.
+
+curl로 확인할 때는 `output/manual-auth/`에 요청·응답·쿠키를 보관하고 출력에는 상태만 남긴다. 실제 이메일과 비밀번호는 자신의 로컬 계정 값을 사용한다.
+
+```powershell
+New-Item -ItemType Directory -Path output/manual-auth -Force | Out-Null
+$taskEmail = Read-Host '로컬 계정 이메일'
+$taskSecure = Read-Host '비밀번호' -AsSecureString
+$taskPassword = [Net.NetworkCredential]::new('', $taskSecure).Password
+@{email=$taskEmail; password=$taskPassword; nickname='직접검증'; role='ADMIN'} |
+  ConvertTo-Json | Set-Content output/manual-auth/signup.json -Encoding utf8NoBOM
+curl.exe -s -o output/manual-auth/member.json -w '%{http_code}' -X POST http://127.0.0.1:8080/api/auth/signup -H 'Content-Type: application/json' --data-binary '@output/manual-auth/signup.json'
+# 새 계정 201, member.json의 role은 USER. 기존 계정은 409.
+curl.exe -s -o output/manual-auth/login.json -w '%{http_code}' -c output/manual-auth/cookies.txt -X POST http://127.0.0.1:8080/api/auth/login -H 'Content-Type: application/json' --data-binary '@output/manual-auth/signup.json'
+$taskAccess = (Get-Content output/manual-auth/login.json -Raw | ConvertFrom-Json).accessToken
+curl.exe -s http://127.0.0.1:8080/api/me -H "Authorization: Bearer $taskAccess"
+Copy-Item output/manual-auth/cookies.txt output/manual-auth/old-cookies.txt
+curl.exe -s -o output/manual-auth/refresh.json -w '%{http_code}' -b output/manual-auth/cookies.txt -c output/manual-auth/cookies.txt -X POST http://127.0.0.1:8080/api/auth/refresh
+# 200. 구 쿠키는 401이며 새 쿠키를 지우지 않는다.
+curl.exe -s -o output/manual-auth/rejected.json -w '%{http_code}' -b output/manual-auth/old-cookies.txt -X POST http://127.0.0.1:8080/api/auth/refresh
+curl.exe -s -o output/manual-auth/logout.txt -w '%{http_code}' -b output/manual-auth/cookies.txt -X POST http://127.0.0.1:8080/api/auth/logout
+curl.exe -s -o output/manual-auth/after-logout.json -w '%{http_code}' -b output/manual-auth/cookies.txt -X POST http://127.0.0.1:8080/api/auth/refresh
+# 순서대로 401 / 204 / 401. 이미 발급된 Access는 만료까지 여전히 유효.
+$taskPassword=$null; $taskAccess=$null; $taskSecure.Dispose()
+```
+
+ADMIN은 `ADMIN_SEED_EMAIL`과 유효한 `{bcrypt}` 해시인 `ADMIN_SEED_PASSWORD_HASH`를 자신의 프로세스 환경변수로 설정한 뒤 `./gradlew.bat :app:bootRun '--args=--spring.profiles.active=local,admin-seed --spring.main.web-application-type=none'`를 한 번 실행한다. 비웹 실행이 종료되면 정상 local bootRun으로 돌아간다. 해시·키는 커밋하지 않는다. 운영 명령은 [DEPLOY](DEPLOY.md)의 M1-01 추가 절을 따른다.
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 행 잠금 뒤 시각을 읽는 이유는 기다리는 중 만료된 토큰의 수락을 막기 위해서다. DB 잠금 대기 시간 초과·커넥션 장애는 실패 응답이 될 수 있으며 성능 상한을 측정한 것은 아니다. HMAC 검증은 DB 조회 없이 공유 Decoder 하나에서 한다.
+- 이전 폐기와 신규 저장을 한 트랜잭션으로 묶어 반쪽 회전을 막는다. **커밋 후 응답/Set-Cookie가 유실되면** 구 토큰은 이미 폐기되어 재로그인이 필요할 수 있다. 재사용 유예가 없다는 승인한 정책의 한계다. 새 쿠키를 잘못 지우지 않도록 실패 응답은 Set-Cookie를 보내지 않는다.
+- Web Locks는 같은 출처·브라우저 컨텍스트의 협력하는 탭을 직렬화한다. 서버는 이를 신뢰하지 않고 DB 잠금으로 중복 성공을 막는다. 다른 클라이언트·응답 유실까지 해결하는 장치는 아니다.
+- Clock 역행은 유효 기간을 실제 시간보다 늘릴 수 있고, 앞으로 점프하면 일찍 만료될 수 있다. JWT는 초 단위라 실제 수명은 발급 Clock 값 기준 15분보다 최대 1초 미만 짧다. 응답의 expiresAt과 실제 검증 경계는 일치한다. 레인 시계 점프 OQ-35는 이번에 정하지 않았다.
+- M1-02: 공용 Decoder로 CONNECT 인증, 임시 TOKEN_INVALID 거절 제거, Principal·개인 큐·연결 신원 전환. M1-08: 익명 진단 연결 수명 정리. M3-07: trade FK와 경고 쓰기·거래 구현. 패널티 OQ-26은 미결 그대로다.
+- 원격 CI·운영 HTTPS·실제 운영 Secure 쿠키·외부 관리 포트·배포/이미지 실행·성능·복구·입찰·STOMP JWT는 NOT_RUN이다. 단위/필터/MySQL/TCP/실제 UI의 증거를 서로 대신하지 않는다. 새 npm 의존성·외부 알림·원격 쓰기는 없다.
+
 ## M0-05 첫 배포 준비
 
 - 작업일: 2026-10-27 (Asia/Seoul).

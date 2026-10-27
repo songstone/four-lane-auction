@@ -67,7 +67,7 @@ M1-01 승인 (2026-10-27): Access Token은 15분, Refresh Token은 로그인부�
 
 | 항목 | 규칙 |
 |---|---|
-| Access Token | `Authorization: Bearer <accessToken>` 헤더로 보낸다. 수명 15분 (제안, B-3). 클라이언트는 메모리에만 둔다 (ARCH 11). 만료 시각은 응답의 `accessTokenExpiresAt`으로 알고, 토큰 내용은 해석하지 않는다 |
+| Access Token | `Authorization: Bearer <accessToken>` 헤더로 보낸다. 수명 15분 (M1-01 승인, B-3). 클라이언트는 메모리에만 둔다 (ARCH 11). 만료 시각은 응답의 `accessTokenExpiresAt`으로 알고, 토큰 내용은 해석하지 않는다 |
 | Refresh Token | `refreshToken` 쿠키. `HttpOnly; Secure; SameSite=Strict; Path=/api/auth` (제안, ARCH 11). JS로 읽을 수 없다. `/api/auth/*` 요청에만 실리고, 그중 쿠키로 동작하는 것은 재발급(3.3)과 로그아웃(3.4)뿐이다. 재발급할 때마다 바뀐다 (회전). 0.2의 `Path=/api/auth/refresh`로는 로그아웃 요청에 쿠키가 실리지 않아 0.3에서 넓혔다 |
 | 권한 표기 | `공개`: 토큰 없이 된다 / `USER` / `ADMIN` / `로그인`: USER와 ADMIN 모두. 역할이 맞지 않으면 `403 FORBIDDEN` |
 | 공개 API에 잘못된 토큰 | 만료되었거나 위조된 토큰을 붙이면 공개 API도 `401 UNAUTHENTICATED`다. 익명으로 낮춰 받지 않는다 (STOMP의 OQ-39와 같은 규칙. Spring Security 리소스 서버의 기본 동작이기도 하다). 클라이언트는 아래 401 처리를 그대로 따르고, 재발급이 실패하면 토큰 없이 다시 보낸다 |
