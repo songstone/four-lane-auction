@@ -193,6 +193,9 @@ class SessionHttpAndStompIntegrationTest extends MySqlIntegrationTest {
         mvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/sessions'].get.operationId").value("listSessions"))
+                .andExpect(jsonPath("$.paths['/api/sessions'].get.responses['200'].content['application/json']").exists())
+                .andExpect(jsonPath("$.paths['/api/sessions'].get.responses['400'].content['application/json']").exists())
+                .andExpect(jsonPath("$.paths['/api/sessions'].get.responses['500'].content['application/json']").exists())
                 .andExpect(jsonPath("$.paths['/api/sessions'].get.parameters[?(@.name=='status')].required",
                         hasItem(true)))
                 .andExpect(jsonPath("$.paths['/api/sessions'].get.parameters[?(@.name=='size')].schema.default",

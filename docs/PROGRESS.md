@@ -251,3 +251,4 @@ npm run build
 - 실제 `WebSocketStompClient`: 익명 CONNECTED(STOMP 1.2, 10초 하트비트), 숫자 레인 구독, SEND 세 목적지 차단, 개인 큐·직접 큐·허용 목록 밖 구독 차단, ERROR message와 연결 종료, 토큰 헤더 임시 거절, 미허용 Origin의 403을 확인했다. 테스트 토픽이나 이벤트 발행 코드는 추가하지 않았다.
 - 실제 bootRun + Compose MySQL: 상태별 목록 200·빈 배열·null 커서·밀리초 3자리 UTC serverTime, status 누락 400 INVALID_REQUEST 확인 (`output/m0-03-http-checks.json`). `/v3/api-docs`는 `/api/sessions`만 노출하며 필수·nullable·enum·오류 스키마를 계약 테스트로 검사했다 (`output/m0-03-openapi.json`).
 - 시간 출처 검사: 운영 파일 29개, 0 violations. V1~V4 수정 없음. 최초 테스트 클라이언트의 하트비트 스케줄러 누락과 STOMP 헤더 접근 오류를 수정한 뒤 위 최종 명령을 성공시켰다. 동일 checkout의 이전 앱·Vite 프로세스가 기본 포트를 사용하고 있어 소유 경로를 확인해 종료한 뒤 최신 백엔드를 기동했다.
+- [GEN] 최초 타입 검사에서 응답 content type이 OpenAPI에 `*/*`로 나가 Orval이 문자열을 생성하는 문제를 발견했다. [BE]의 매핑·응답 애노테이션에 계약의 `application/json`을 명시하고 200/400/500의 OpenAPI media type 회귀 검증을 추가했다. `test build` 재실행 성공 (`output/m0-03-be-json-build.log`, UTC·서울 각각 70건, 실패·오류·skip 0). API.md·EVENTS.md의 계약 변경이나 생성 파일 수동 수정으로 해결하지 않았다.

@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,14 +22,17 @@ public class SessionController {
         this.queries = queries;
     }
 
-    @GetMapping("/api/sessions")
+    @GetMapping(value = "/api/sessions", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(operationId = "listSessions", summary = "상태별 회차 목록")
     @ApiResponse(responseCode = "200", description = "회차 목록",
-            content = @Content(schema = @Schema(implementation = SessionListResponse.class)))
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(implementation = SessionListResponse.class)))
     @ApiResponse(responseCode = "400", description = "INVALID_REQUEST",
-            content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
     @ApiResponse(responseCode = "500", description = "INTERNAL_ERROR",
-            content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
     public SessionListResponse list(
             @RequestParam SessionStatus status,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
