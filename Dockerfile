@@ -13,7 +13,7 @@ COPY backend/ ./
 # Only the container build receives static assets; bootRun and Vite stay separate.
 COPY --from=frontend-build /build/frontend/dist/ app/src/main/resources/static/
 RUN --mount=type=cache,target=/root/.gradle \
-    chmod +x gradlew && ./gradlew --no-daemon :app:bootJar --console=plain \
+    java -jar gradle/wrapper/gradle-wrapper.jar --no-daemon :app:bootJar --console=plain \
     && cp app/build/libs/*-SNAPSHOT.jar /build/app.jar
 
 FROM amazoncorretto:21-al2023-headless@sha256:212faf5f8f93d8f4854a3d89528834d11ad2d685de80721d4d24ac2fdd3e379e AS runtime
