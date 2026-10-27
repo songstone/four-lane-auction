@@ -217,7 +217,7 @@ npm run build
 ## M0-03 연결 확인 화면 (REST + WebSocket)
 
 - 작업일: 2026-10-27 (Asia/Seoul)
-- 상태: 진행 중 — [BE]·[GEN] 완료
+- 상태: 진행 중 — [BE]·[GEN]·[FE] 완료
 - 원본: TASKS M0-03, API 1.2·1.4·1.5·4.1, EVENTS 1장과 사용자 보충
 - 시작 SHA: `354b2ae36bf53c96b6a1dad4720a79fd8ee6aa3b`, `dev`, 작업 트리 clean
 - 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction` (별도 worktree 없음)
@@ -252,4 +252,5 @@ npm run build
 - 실제 bootRun + Compose MySQL: 상태별 목록 200·빈 배열·null 커서·밀리초 3자리 UTC serverTime, status 누락 400 INVALID_REQUEST 확인 (`output/m0-03-http-checks.json`). `/v3/api-docs`는 `/api/sessions`만 노출하며 필수·nullable·enum·오류 스키마를 계약 테스트로 검사했다 (`output/m0-03-openapi.json`).
 - 시간 출처 검사: 운영 파일 29개, 0 violations. V1~V4 수정 없음. 최초 테스트 클라이언트의 하트비트 스케줄러 누락과 STOMP 헤더 접근 오류를 수정한 뒤 위 최종 명령을 성공시켰다. 동일 checkout의 이전 앱·Vite 프로세스가 기본 포트를 사용하고 있어 소유 경로를 확인해 종료한 뒤 최신 백엔드를 기동했다.
 - [GEN] 최초 타입 검사에서 응답 content type이 OpenAPI에 `*/*`로 나가 Orval이 문자열을 생성하는 문제를 발견했다. [BE]의 매핑·응답 애노테이션에 계약의 `application/json`을 명시하고 200/400/500의 OpenAPI media type 회귀 검증을 추가했다. `test build` 재실행 성공 (`output/m0-03-be-json-build.log`, UTC·서울 각각 70건, 실패·오류·skip 0). API.md·EVENTS.md의 계약 변경이나 생성 파일 수동 수정으로 해결하지 않았다.
-- **[GEN] PASS**: 実行 중인 `http://127.0.0.1:8080/v3/api-docs`에서 Orval 8.45.0으로 요청 함수·모델을 `frontend/src/api/generated/`에 생성했다 (`output/m0-03-gen-api.log`). 생성된 호출 경로는 `/api/sessions`이며 JSON을 파싱한다. 필수 status와 응답의 필수 nullable 필드가 타입에 반영됐고 `npm run typecheck`가 통과했다. 같은 입력으로 재생성한 파일 해시도 동일하다 (`output/m0-03-gen-api-repeat.log`). Orval 설치 audit은 0 vulnerabilities였다.
+- **[GEN] PASS**: 실행 중인 `http://127.0.0.1:8080/v3/api-docs`에서 Orval 8.45.0으로 요청 함수·모델을 `frontend/src/api/generated/`에 생성했다 (`output/m0-03-gen-api.log`). 생성된 호출 경로는 `/api/sessions`이며 JSON을 파싱한다. 필수 status와 응답의 필수 nullable 필드가 타입에 반영됐고 `npm run typecheck`가 통과했다. 같은 입력으로 재생성한 파일 해시도 동일하다 (`output/m0-03-gen-api-repeat.log`). Orval 설치 audit은 0 vulnerabilities였다.
+- **[FE] PASS — 타입·빌드**: `@stomp/stompjs` 7.5.0 설치, `npm run typecheck`·`npm run build` 성공 (`output/m0-03-fe-checks.log`). 세 상태별 Infinite Query와 다음 커서의 더 보기, 로딩·빈 상태·오류·다시 조회, 30초/화면 복귀 재조회, 서버 시각의 마지막 수신값, 독립된 REST·STOMP 배지를 구현했다. 브라우저 REST는 생성된 요청 함수만 호출한다. STOMP는 현재 location의 같은 출처 `/ws`, 10초 하트비트, 최대 30초의 지수 백오프와 시도별 jitter를 사용한다. 구독자 하나가 떠난 뒤 소켓 종료를 기다려 StrictMode 재마운트의 중복 연결을 막는다. 이 단계의 브라우저 통합은 아직 NOT_RUN이다.
