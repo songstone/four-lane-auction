@@ -1,0 +1,12 @@
+@import 'tailwindcss';
+@config '../tailwind.config.ts';
+
+@layer base {
+  body {
+    @apply m-0 min-h-screen bg-canvas font-sans text-ink antialiased;
+  }
+
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
