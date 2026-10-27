@@ -217,7 +217,7 @@ npm run build
 ## M0-03 연결 확인 화면 (REST + WebSocket)
 
 - 작업일: 2026-10-27 (Asia/Seoul)
-- 상태: 진행 중 — [BE]·[GEN]·[FE] 완료
+- 상태: 완료 (M0-03 범위, 수용 기준과 아래 실제 실행 증거 기준)
 - 원본: TASKS M0-03, API 1.2·1.4·1.5·4.1, EVENTS 1장과 사용자 보충
 - 시작 SHA: `354b2ae36bf53c96b6a1dad4720a79fd8ee6aa3b`, `dev`, 작업 트리 clean
 - 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction` (별도 worktree 없음)
@@ -253,4 +253,63 @@ npm run build
 - 시간 출처 검사: 운영 파일 29개, 0 violations. V1~V4 수정 없음. 최초 테스트 클라이언트의 하트비트 스케줄러 누락과 STOMP 헤더 접근 오류를 수정한 뒤 위 최종 명령을 성공시켰다. 동일 checkout의 이전 앱·Vite 프로세스가 기본 포트를 사용하고 있어 소유 경로를 확인해 종료한 뒤 최신 백엔드를 기동했다.
 - [GEN] 최초 타입 검사에서 응답 content type이 OpenAPI에 `*/*`로 나가 Orval이 문자열을 생성하는 문제를 발견했다. [BE]의 매핑·응답 애노테이션에 계약의 `application/json`을 명시하고 200/400/500의 OpenAPI media type 회귀 검증을 추가했다. `test build` 재실행 성공 (`output/m0-03-be-json-build.log`, UTC·서울 각각 70건, 실패·오류·skip 0). API.md·EVENTS.md의 계약 변경이나 생성 파일 수동 수정으로 해결하지 않았다.
 - **[GEN] PASS**: 실행 중인 `http://127.0.0.1:8080/v3/api-docs`에서 Orval 8.45.0으로 요청 함수·모델을 `frontend/src/api/generated/`에 생성했다 (`output/m0-03-gen-api.log`). 생성된 호출 경로는 `/api/sessions`이며 JSON을 파싱한다. 필수 status와 응답의 필수 nullable 필드가 타입에 반영됐고 `npm run typecheck`가 통과했다. 같은 입력으로 재생성한 파일 해시도 동일하다 (`output/m0-03-gen-api-repeat.log`). Orval 설치 audit은 0 vulnerabilities였다.
-- **[FE] PASS — 타입·빌드**: `@stomp/stompjs` 7.5.0 설치, `npm run typecheck`·`npm run build` 성공 (`output/m0-03-fe-checks.log`). 세 상태별 Infinite Query와 다음 커서의 더 보기, 로딩·빈 상태·오류·다시 조회, 30초/화면 복귀 재조회, 서버 시각의 마지막 수신값, 독립된 REST·STOMP 배지를 구현했다. 브라우저 REST는 생성된 요청 함수만 호출한다. STOMP는 현재 location의 같은 출처 `/ws`, 10초 하트비트, 최대 30초의 지수 백오프와 시도별 jitter를 사용한다. 구독자 하나가 떠난 뒤 소켓 종료를 기다려 StrictMode 재마운트의 중복 연결을 막는다. 이 단계의 브라우저 통합은 아직 NOT_RUN이다.
+- **[FE] PASS — 타입·빌드**: `@stomp/stompjs` 7.5.0 설치, `npm run typecheck`·`npm run build` 성공 (`output/m0-03-fe-checks.log`). 세 상태별 Infinite Query와 다음 커서의 더 보기, 로딩·빈 상태·오류·다시 조회, 30초/화면 복귀 재조회, 서버 시각의 마지막 수신값, 독립된 REST·STOMP 배지를 구현했다. 브라우저 REST는 생성된 요청 함수만 호출한다. STOMP는 현재 location의 같은 출처 `/ws`, 10초 하트비트, 최대 30초의 지수 백오프와 시도별 jitter를 사용한다. 마지막 구독자가 떠난 뒤 소켓 종료를 기다려 StrictMode 재마운트의 중복 연결을 막는다. 브라우저 결과는 아래 [통합]에 별도로 기록한다.
+
+### [통합] 실제 브라우저 검증
+
+Windows Chrome + Playwright CLI에서 실제 Compose MySQL·bootRun·Vite를 연결해 실행했다. 데스크톱 1440×960과 모바일 390×844를 확인했고, 각각 문서 폭이 뷰포트 폭과 같았다. 정상 연결 상태에서 console error/warning은 0이었다.
+
+- 세 목록은 실제 API 응답의 `items: []`로 빈 상태를 표시했다. REST는 세 상태의 조회 결과로, WebSocket은 실제 STOMP CONNECTED 프레임을 수신한 뒤 초록색이 됐다. 화면 serverTime이 실제 목록 응답의 값과 같은 것도 검사했다 (`output/m0-03-browser-initial.log`).
+- 개발 모드 StrictMode를 포함한 최초 연결과 서버 종료·재시작 구간에서, 계측한 `/ws`의 동시 연결 최대값은 **탭당 1개**였다. Vite 개발용 소켓은 집계에서 제외했다. 이는 이번 기능 검증 구간의 관측이며 부하·성능 목표 측정이 아니다.
+- 실제 자동 재조회에서 표시 시각이 `04:12:20.889Z` → `04:12:50.913Z`로 바뀌고 HTTP 응답이 도착하는 것을 확인했다. 모바일 문서 폭은 390이었다 (`output/m0-03-browser-poll-mobile.log`).
+- 이 작업의 백엔드 프로세스를 확인해 종료하자 REST·WebSocket 배지가 모두 빨간색으로 바뀌고 목록별 오류 3개가 표시됐다. 마지막 수신 시각은 유지됐고 CONNECTED 성공 횟수는 늘지 않았다 (`output/m0-03-browser-offline.log`).
+- 같은 백엔드를 재시작한 뒤 **페이지 새로고침 없이** 두 배지가 초록색으로 돌아왔다. CONNECTED 수신 횟수 1 → 2, 활성 소켓 1, 동시 최대 1, 오류 패널 0, 새로운 응답 시각 `04:14:51.157Z`를 확인했다 (`output/m0-03-browser-recovery.log`). 이 구간의 uncaught page error는 0이었다. 서버 중단 중의 예상된 HTTP/WebSocket 네트워크 실패는 브라우저 콘솔에 기록됐다.
+- 로딩은 별도 브라우저 세션에서 실제 회차 요청을 잠시 보류한 뒤 그대로 백엔드에 전달해 확인했다. 로딩 표시 3개가 나온 뒤 실제 응답으로 연결 상태가 정상화됐다. 응답을 합성하지 않았다 (`output/m0-03-browser-loading.log`). 최초 검증 세션의 잔류 route handler가 간섭해 이 검사가 실패했으며, 새 브라우저 세션에서 최종 명령은 성공했다.
+- 캡처: `output/playwright/m0-03-desktop.png`, `m0-03-mobile.png`, `m0-03-offline.png`, `m0-03-recovered.png`, `m0-03-loading.png`. 테스트·빌드·로그·캡처는 gitignore 대상이다.
+
+### TASKS M0-03 수용 기준별 결과
+
+| 수용 기준 | 결과 | 확인한 증거 |
+|---|---|---|
+| SCHEDULED 조회 200, items [], nextCursor null, 밀리초 3자리 UTC serverTime | PASS | 실제 HTTP·실제 MySQL·고정 Clock 계약 테스트, 브라우저 표시와 응답값 대조 |
+| status 누락 400 INVALID_REQUEST | PASS | MVC 및 실제 curl/HTTP. error.fields에 status/REQUIRED |
+| 익명 CONNECT → CONNECTED, SEND·직접 /queue 구독 거절 | PASS | WebSocketStompClient의 실제 연결·ERROR·연결 종료. 브라우저 STOMP CONNECTED 수신도 확인 |
+| 프론트는 생성 클라이언트로만 목록 호출 | PASS | sessionQueries가 생성 listSessions만 호출. Git 소스 검사상 수동 fetch 없음. 실제 브라우저의 같은 출처 /api/sessions 호출 확인 |
+
+API.md·EVENTS.md·TASKS.md 원문은 수정하지 않았다. 진단 API와 테스트 토픽은 추가하지 않았다. 승인한 임시 제한 두 가지는 위 후속 작업 및 ADR-003에 남아 있다.
+
+### 직접 확인하는 방법
+
+현재 검증용 백엔드(앱 8080·관리 8081), Vite(5173), MySQL이 실행 중이다. [http://127.0.0.1:5173/](http://127.0.0.1:5173/)에서 바로 볼 수 있다. 처음부터 재현할 때는 기존 bootRun·Vite를 종료한 뒤 루트에서 실행한다.
+
+```powershell
+docker compose up -d mysql
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10' # 자신의 JDK 21 경로
+cd backend
+./gradlew.bat test build
+./gradlew.bat :app:bootRun
+```
+
+별도 터미널에서 루트 기준으로 실행한다. gen-api는 위 백엔드가 실행 중이어야 한다. 다른 주소는 `OPENAPI_URL` 환경변수에 `/v3/api-docs` URL을 지정한다.
+
+```powershell
+cd frontend
+npm ci
+npm run gen-api
+npm run typecheck
+npm run build
+npm run dev
+```
+
+```powershell
+curl.exe 'http://127.0.0.1:8080/api/sessions?status=SCHEDULED'
+curl.exe -i 'http://127.0.0.1:8080/api/sessions'
+```
+
+홈에서 세 빈 목록·초록 배지·서버 시각을 확인한다. 개발자 도구 Network의 `/ws`에서 CONNECT/CONNECTED와 `heart-beat:10000,10000`을 확인할 수 있다. bootRun을 Ctrl+C로 종료하면 WebSocket 배지가 끊김/재연결 중으로, REST는 다음 30초 재조회에서 끊김으로 바뀐다. bootRun을 다시 실행하면 페이지를 새로고침하지 않아도 재연결과 다음 REST 재조회로 초록색으로 돌아온다.
+
+### 증거의 범위
+
+- [BE] → [GEN] → [FE] → [통합] 순서로 수행했다. [GEN]의 media type 오류는 [BE]로 돌아가 수정·검증한 뒤 재생성했다. [FE]에서 backend를 수정하지 않았다. 생성 결과는 별도 커밋에 포함했다.
+- JWT 실제 검증·로그인/개인 큐(M1-02), 관전 화면의 연결 수명 정리(M1-08), 레인 이벤트·비컨·스냅샷 재동기화·경매 엔진·입찰·영속 상태 복구·부하·배포는 **NOT_RUN**이며 이번 완료 범위 밖이다.
+- 데이터가 있는 회차 카드·더 보기의 브라우저 검증은 **NOT_RUN**이다. 상태별 페이지·정렬·Lot 집계는 Testcontainers의 실제 MySQL에서 검증했고, 실제 로컬 DB의 빈 목록을 가짜 회차로 채우지 않았다.
