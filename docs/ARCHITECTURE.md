@@ -110,7 +110,7 @@
 | 인증 | Spring Security + JWT | JWT 발급·검증은 Spring Security의 `spring-security-oauth2-jose`(Nimbus)로 한다 (제안). 별도 JWT 라이브러리 없이 만료 검증기(`JwtTimestampValidator`)에 주입한 `Clock`을 넣을 수 있다 (9장 R10) |
 | 실시간 | Spring WebSocket + STOMP, Simple Broker | SockJS는 쓰지 않는다 (제안). k6와 브라우저 모두 순수 WebSocket을 쓴다 |
 | API 문서 | springdoc-openapi (Boot 4 대응 라인) | REST만 문서화한다. 계약의 원본은 [API.md](API.md)이고, 생성된 OpenAPI가 그와 같은지 계약 테스트로 본다. STOMP 메시지는 [EVENTS.md](EVENTS.md)에 둔다 |
-| 테스트 | JUnit 5 (Jupiter), Testcontainers (MySQL) | H2는 쓰지 않는다 (CHALLENGES 2장: InnoDB 락 동작이 다르다) |
+| 테스트 | JUnit 6 (Jupiter), Testcontainers (MySQL) | M0-01 사용자 승인(2026-10-27): Spring Framework 7의 테스트 기준에 맞춰 JUnit 6을 쓴다. 버전은 Boot 4.1.2 BOM으로 고정한다. Testcontainers는 M0-02에서 도입한다. H2는 쓰지 않는다 (CHALLENGES 2장: InnoDB 락 동작이 다르다) |
 | 관측 | Micrometer, Prometheus, Grafana | PRD 9.5 |
 | 프론트 | React, Vite, TypeScript, Tailwind CSS, TanStack Query, @stomp/stompjs | |
 | 인프라 | Docker, docker-compose, GitHub Actions | |
