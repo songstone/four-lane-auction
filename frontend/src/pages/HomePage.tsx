@@ -1,4 +1,4 @@
-import { apiErrorMessage } from '../api/errorMessages';
+import { ApiRequestError, apiErrorMessage } from '../api/errorMessages';
 import { SessionStatus } from '../api/generated/models';
 import type { SessionSummary } from '../api/generated/models';
 import { useSessionList } from '../api/sessionQueries';
@@ -99,9 +99,11 @@ export function HomePage() {
             <Badge data-testid="rest-status" tone={restFailed ? 'danger' : restConnected ? 'success' : 'neutral'}>
               REST {restFailed ? '연결 끊김' : restConnected ? '연결됨' : '연결 중'}
             </Badge>
-            <Badge data-testid="ws-status" title="STOMP CONNECTED 수신 기준"
-              tone={ws === 'connected' ? 'success' : ws === 'connecting' ? 'neutral' : 'danger'}>
-              WebSocket {connectionLabels[ws]}
+            <Badge data-testid="ws-status" title={ws.error
+              ? apiErrorMessage(new ApiRequestError(ws.error, '연결 요청이 거절되었습니다.')) : 'STOMP CONNECTED 수신 기준'}
+              tone={ws.status === 'connected' ? 'success' : ws.status === 'connecting' ? 'neutral' : 'danger'}>
+              WebSocket {ws.status === 'connected'
+                ? ws.identity === 'authenticated' ? '인증 연결' : '익명 연결' : connectionLabels[ws.status]}
             </Badge>
           </div>
         </div>

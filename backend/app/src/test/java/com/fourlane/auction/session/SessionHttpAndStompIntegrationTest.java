@@ -256,7 +256,7 @@ class SessionHttpAndStompIntegrationTest extends MySqlIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"", "Bearer not-verified-yet"})
-    void tokenConnectIsRejectedUntilM102(String value) throws Exception {
+    void malformedTokenConnectIsRejected(String value) throws Exception {
         var probe = new Probe();
         var headers = new StompHeaders();
         headers.set("Authorization", value);

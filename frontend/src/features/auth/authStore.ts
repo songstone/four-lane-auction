@@ -8,6 +8,8 @@ interface AuthState { status: AuthStatus; error: unknown }
 
 // Credentials live only in this module's memory. Member data belongs to Query's ['me'] cache.
 let token: string | null = null;
+let expiresAt = 0;
+let connectionMember: { id: number; role: string } | null = null;
 let epoch = 0;
 let state: AuthState = { status: 'loading', error: null };
 let onMember: (member: MemberResponse | null) => void = () => {};
@@ -37,9 +39,15 @@ export function subscribeAuth(listener: () => void) {
   return () => { listeners.delete(listener); };
 }
 export function requestAccessToken() { return token; }
+export function requestConnectionAuth() {
+  return { token, expiresAt, role: connectionMember?.role ?? null,
+    identity: connectionMember ? `${epoch}:${connectionMember.id}:${connectionMember.role}` : 'anonymous' };
+}
 
 function accept(data: AuthResponse) {
   token = data.accessToken;
+  expiresAt = Date.parse(data.accessTokenExpiresAt);
+  connectionMember = { id: data.member.memberId, role: data.member.role };
   onMember(data.member);
   publish('authenticated');
 }
@@ -47,6 +55,8 @@ function accept(data: AuthResponse) {
 export function forgetSession() {
   epoch++;
   token = null;
+  expiresAt = 0;
+  connectionMember = null;
   onMember(null);
   publish('anonymous');
 }

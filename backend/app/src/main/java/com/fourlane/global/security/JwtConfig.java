@@ -11,6 +11,8 @@ import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
@@ -33,5 +35,12 @@ public class JwtConfig {
     }
 
     @Bean JwtEncoder jwtEncoder(SecretKey key) { return new NimbusJwtEncoder(new ImmutableSecret<>(key)); }
+    @Bean
+    JwtAuthenticationConverter jwtAuthenticationConverter() {
+        var converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> java.util.List.of(
+                new SimpleGrantedAuthority("ROLE_" + jwt.getClaimAsString("role"))));
+        return converter;
+    }
     @Bean PasswordEncoder passwordEncoder() { return PasswordEncoderFactories.createDelegatingPasswordEncoder(); }
 }

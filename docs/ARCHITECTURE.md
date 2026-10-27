@@ -1580,6 +1580,7 @@ sequenceDiagram
 
 - CONNECT에서 `accessor.setUser(...)`로 넣은 Principal은 Spring이 그 연결의 뒤따르는 프레임에 붙여 준다. 사용자 목적지(`/user/...`)도 이 Principal 이름으로 찾는다.
 - REST와 STOMP가 같은 `JwtDecoder` 빈을 쓴다. 서명, 만료, 토큰 종류의 검증 규칙이 한 곳에 있다.
+- M1-02 구현: `JwtAuthenticationConverter`도 공용 빈으로 공유한다. `/ws`의 HTTP Bearer 추출을 생략해 HTTP Principal이 연결 신원을 대신하지 않게 한다. 연결·구독·신원 전환과 실행 증거는 [ADR-007](adr/ADR-007-M1-02-stomp-auth.md), PROGRESS M1-02에 기록했다. REST·이벤트 계약은 그대로다.
 - 연결 중 만료는 검사하지 않으므로(OQ-39), 개인 큐로 나가는 정보는 "이미 인증한 사용자 본인의 알림"으로 한정한다. 권한이 필요한 동작(입찰, 결제)은 REST에만 있다.
 - Spring Security의 메시지 보안(`@EnableWebSocketSecurity`)은 쓰지 않는다 (제안). 이 기능은 기본으로 CONNECT에 CSRF 토큰을 요구하는데, 쿠키 세션이 없는 이 구조에서는 의미가 없다. 규칙이 위 표 정도라 인터셉터 하나가 더 읽기 쉽다. 규칙이 늘어나면 다시 본다.
 - 재발급까지 실패하면(Refresh Token 만료) 클라이언트는 로그아웃 상태로 보고 토큰 없이 연결한다. 관전은 이어지고 개인 알림만 없다.
@@ -1742,7 +1743,8 @@ PRD에 없어서 넣지 않은 보안 기능(로그인 시도 제한, 이미지 
 | CH-11 측정 | 메트릭 태그는 `laneNo`, 히스토그램으로 내보냄 | (제안) | 6.7 |
 | CH-12 다중 서버 | 확장하지 않음 | 기본안 | 10 |
 | (기술 선택) 조회 쿼리 | QueryDSL 없이 `@Query` + DTO 프로젝션 | 결정됨 (리뷰) | 1.3 |
-| (기술 선택) API 생성·연결 진단 | Orval + Fetch, springdoc 3.2.0, 시각·ID 키셋 커서. 토큰 포함 CONNECT 임시 거절은 M1-02, 홈 익명 연결은 M1-08에서 정리 (ADR-003) | 결정됨 (M0-03 사용자 승인, 2026-10-27) | 1.3, PROGRESS M0-03 |
+| (기술 선택) API 생성·연결 진단 | Orval + Fetch, springdoc 3.2.0, 시각·ID 키셋 커서. 토큰 포함 CONNECT 임시 거절은 M1-02에서 해소(ADR-007). 홈 익명 연결 수명은 M1-08 후속 (ADR-003) | 결정됨 (M0-03 사용자 승인, 2026-10-27) | 1.3, PROGRESS M0-03·M1-02 |
+| (기술 선택) STOMP 인증 | 공용 Decoder·Principal 변환기, CONNECT에서만 신원 확정, 연결 중 만료 유지. 새 의존성·계약 변경 없음 (ADR-007) | 결정됨 (M1-02 권장안 A 사용자 승인, 2026-10-27) | 8, PROGRESS M1-02 |
 
 ---
 

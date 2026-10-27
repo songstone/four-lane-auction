@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { AccountPage } from './pages/AccountPage';
 import { AuthHeader } from './components/AuthHeader';
+import { AuthenticatedRealtimeConnection } from './realtime/AuthenticatedRealtimeConnection';
 
 function subscribeRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -18,5 +19,5 @@ export function App() {
   const page = url.pathname === '/login' ? <LoginPage returnTo={returnTo} /> :
     url.pathname === '/signup' ? <SignupPage returnTo={returnTo} /> :
     url.pathname === '/me' ? <AccountPage /> : <HomePage />;
-  return <><AuthHeader />{page}</>;
+  return <><AuthenticatedRealtimeConnection /><AuthHeader />{page}</>;
 }
