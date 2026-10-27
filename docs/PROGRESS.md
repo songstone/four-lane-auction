@@ -1,5 +1,89 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M0-04 CI
+
+- 작업일: 2026-10-27 (Asia/Seoul)
+- 상태: **로컬 구현·검증 PASS / 원격 검증 NOT_RUN, 원격 쓰기 승인 대기**. M0-04 전체 완료가 아니다.
+- 원본: [TASKS M0-04](TASKS.md#m0-04-ci), TASKS 0.2 및 사용자 보충 지시.
+- 시작 SHA: `ede60ae2a6f6b28d3c00162a96dd9f4c3c125abf`. 시작 시 `dev`와 작업 트리 clean. `git fetch origin` 뒤 최신 `origin/dev`와 일치 확인.
+- 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction`, 별도 worktree 없음. 브랜치 `feature/M0-04-ci`.
+- 시작 시 원격: 공개 `songstone/four-lane-auction`, main/dev 모두 같은 시작 SHA로 이미 게시됨. 원격 추가·초기 push는 필요하지 않았다.
+- 승인: 권장 계획과 gh 설치 승인. 호환성 확인 뒤 TypeScript 7.0.2를 호환 최신 안정 6.0.x로 조정하는 추가 선택을 받았으며 6.0.3으로 고정했다.
+- 결정 기록: [ADR-004](adr/ADR-004-M0-04-ci.md). 실제 push·PR 생성·보호 및 머지 방식 설정은 각각 명령과 입력 JSON을 보여준 뒤 별도 승인을 받아야 한다.
+
+### 구현
+
+- `.github/workflows/ci.yml`: dev/main push와 두 브랜치 대상 PR에서 `backend`, `frontend`를 독립 실행한다. feature push 트리거·경로 필터·조건부 잡 생략·잡 간 의존 관계는 없다. 문서만 바뀌거나 워크플로가 바뀌어도 두 검사가 생성된다.
+- backend: ubuntu-24.04, Corretto 21, 기존 Wrapper. `docker info` 뒤 `./gradlew --no-daemon clean build --no-build-cache`. 기존 `verifyTimeSources`, engine/app 빌드, UTC `test`와 서울 `testSeoul`을 포함한다.
+- frontend: Node 24, `npm ci → npm run lint → npm run typecheck → npm run build`. ESLint flat config의 JS·TS 권장 규칙과 Hooks 호출·의존성 규칙, 경고 0개 기준이다. 생성 코드·빌드 산출물은 제외하며 기존 앱 소스와 생성 코드는 수정하지 않았다.
+- Gradle/npm 다운로드 캐시를 사용하되 테스트 결과를 실제 실행으로 대체하지 않는다. Gradle 캐시는 main/dev push에서만 쓰고 PR에서는 읽는다. Actions는 공식 안정 release의 commit SHA로 고정했다.
+- 리포트 검증기는 UTC·서울 각각의 필수 MySQL 클래스 2개를 요구하고 실행 0건·skip·실패·오류·리포트 누락·XML 손상·집계 불일치를 실패 처리한다. XML·HTML은 Actions artifact, 실행 수는 step summary에 남긴다.
+- gh 2.103.3 설치 성공. 최초 `gh auth status`는 로그인 없음이었다. 이후 인증 상태는 원격 작업 직전 다시 확인한다.
+- 백엔드 의존성·API·EVENTS 계약·TASKS 원문 변경 없음. 운영 secrets 입력은 불필요하며 필요한 비밀값은 GitHub secrets로만 공급한다. 토큰 권한은 `contents: read`다.
+
+### 로컬 실행 증거
+
+검증 환경: Windows, Corretto 21.0.10, Gradle Wrapper 9.8.2, Docker Engine 28.5.1, Node 24.11.1, npm 11.6.2, Python 3.14. Linux/GitHub-hosted 실제 실행은 아직 NOT_RUN이다.
+
+| 검사 | 실제 실행 결과 | 증거 |
+|---|---|---|
+| `./gradlew.bat --no-daemon clean build --no-build-cache --console=plain` | PASS, 14 actionable tasks 모두 executed. app `test`·`testSeoul` 실제 실행 | `output/m0-04-backend-build.log` |
+| M0-02 시간 출처 검사 | PASS, 운영 파일 29개, 위반 0건 | 위 빌드의 `verifyTimeSources` |
+| `npm ci` | PASS, 239 packages 설치, audit 0 vulnerabilities | `output/m0-04-npm-ci.log` |
+| `npm run lint` | PASS, 오류·경고 0 | `output/m0-04-lint.log` |
+| `npm run typecheck` | PASS, src와 Node 설정 두 tsconfig 검사 | `output/m0-04-typecheck.log` |
+| `npm run build` | PASS, Vite production build | `output/m0-04-frontend-build.log` |
+| 실제 JUnit XML 검증·summary 파일 기록 | PASS | `output/m0-04-report-verification.log`, `output/m0-04-test-summary.md` |
+| 리포트 검증기 음성·양성 검사 | PASS, 합성 입력 9개: 정상·클래스 누락·태스크 누락·0건·skip·failure·error·집계 불일치·XML 손상 | `output/m0-04-reporter-checks.log`. **검증기 자체 검사이며 MySQL 실행 증거로 세지 않는다** |
+| 리포트 검증기 CLI 실패 전달 | PASS, 리포트가 없는 경로를 입력하면 exit 1 | `output/m0-04-reporter-cli-negative.log`. 검증기 오류 전달 검사이며 실제 테스트 실행이 아니다 |
+| 워크플로 YAML·설정 검사 | PASS, 기존 설치된 yaml 파서로 YAML 문법, 트리거·필터 없음·독립 잡·고정 SHA·명령 순서 확인 | `output/m0-04-workflow-checks.log`. **정적 검사이며 Actions 실행으로 세지 않는다** |
+
+실제 테스트 리포트의 실행 수는 다음과 같다. UTC·서울은 같은 테스트를 서로 다른 JVM 시간대에서 실행한 횟수이며 서로 다른 테스트 140개라는 뜻은 아니다.
+
+| 실행 | SchemaAndTimeIntegrationTest | SessionHttpAndStompIntegrationTest | Testcontainers 소계 | 전체 테스트 | failures / errors / skipped |
+|---|---:|---:|---:|---:|---|
+| `test`, UTC | 11 | 24 | **35** | **70** | 0 / 0 / 0 |
+| `testSeoul`, Asia/Seoul | 11 | 24 | **35** | **70** | 0 / 0 / 0 |
+| 총 실행 횟수 | 22 | 48 | **70** | **140** | 0 / 0 / 0 |
+
+원본은 `backend/app/build/test-results/{test,testSeoul}/TEST-*.xml`과 `backend/app/build/reports/tests/{test,testSeoul}/index.html`이다. engine은 아직 테스트가 없어 `engine:test NO-SOURCE`이며 엔진 테스트를 실행했다고 주장하지 않는다. 로그·빌드·합성 입력 검증 스크립트는 gitignore 대상 `output/`에만 보존한다.
+
+### 실행 중 확인한 문제
+
+- 최초 `npm ci`는 이전 Vite가 lightningcss 네이티브 모듈을 열고 있어 EPERM으로 실패했다. 이 checkout의 Vite PID를 확인해 종료한 뒤 같은 명령으로 성공했다. 최초 로그는 `output/m0-04-npm-ci-initial.log`에 보존했다. 관리자 실행·skip·lockfile 무시로 해결하지 않았다.
+- clean 전에 이 checkout에서 실행 중이던 백엔드 앱도 소유 경로·main class를 확인해 종료했다. 관련 없는 Java/Node 프로세스는 종료하지 않았다.
+- 검증 뒤 기존 백엔드와 Vite를 다시 기동했고 관리 health·Vite HTTP 200을 확인했다 (`output/m0-04-restored-services.json`). 이는 로컬 서비스 복원 확인이며 브라우저 시연·CI 실행 증거는 아니다.
+- npm registry의 안정판 metadata와 peer 범위를 확인했을 때 typescript-eslint 8.72.1은 TypeScript `<6.1.0`을 요구했다. 사용자 추가 선택으로 TypeScript 6.0.3을 사용했다. 설치 전후 기존 패키지의 버전 비교에서 TypeScript 외 기존 패키지 버전은 유지됐다.
+
+### TASKS M0-04 수용 기준별 상태
+
+| 수용 기준 | 현재 판정 | 남은 확인 |
+|---|---|---|
+| dev/main push와 두 브랜치 대상 PR에서 실행, backend/frontend 각각 실패 보고 | 설정·로컬 검사 PASS / **원격 NOT_RUN** | 구현 PR 첫 Actions, 머지 후 dev push, 실제 잡 결과 |
+| Testcontainers가 CI에서 실제 실행되고 건너뛰지 않음 | 로컬 실제 실행 PASS / **CI NOT_RUN** | Actions summary의 실행 수, XML·HTML artifact |
+| Instant.now() 실패 PR의 CI 빨간색·머지 차단·미머지 종료 | **NOT_RUN** | 사용자의 구현 PR 머지 후 실패용 feature/PR로 실행 |
+| main/dev 관리자 포함 직접 push 거절, 필수 검사, 승인 리뷰 불필요 | **NOT_RUN** | 첫 검사 실행 후 보호 설정 별도 승인·적용·조회, 실제 직접 push 거절 |
+| 비밀값은 GitHub secrets로만 공급 | 코드·설정에 운영 비밀값 입력 없음 | 원격 설정 확인 시 함께 재확인. 실제 운영 secrets를 요구하는 단계는 없음 |
+
+성공·실패 Actions 링크 2개, 머지 차단 화면, 양쪽 보호 설정 조회와 직접 push 거절 증거는 아직 없다. 이 증거를 얻기 전에는 완료로 표시하지 않는다. 사용자가 구현 PR을 머지한 뒤의 최종 증거는 기존 PR 본문과 최종 보고에 추가하고 dev에 직접 커밋하지 않는다.
+
+### 직접 재현하는 방법
+
+기존 bootRun·Vite가 실행 중이면 이 checkout의 해당 프로세스를 먼저 종료해야 Windows 파일 잠금 없이 clean·npm ci를 실행할 수 있다. Testcontainers는 자체 MySQL 컨테이너를 사용하므로 테스트를 위해 Compose app을 띄우지 않는다.
+
+```powershell
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10'
+cd backend
+./gradlew.bat --no-daemon clean build --no-build-cache --console=plain
+cd ..
+python .github/scripts/verify-test-results.py
+cd frontend
+npm ci
+npm run lint
+npm run typecheck
+npm run build
+```
+
 ## M0-01 저장소 뼈대와 로컬 인프라
 
 - 작업일: 2026-10-27 (Asia/Seoul)
