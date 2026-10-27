@@ -117,12 +117,12 @@ PRD OQ-29에 따라 Should부터 뺀다. Must 작업은 빼지 않는다.
 **설명**: 모노레포(`backend/`, `frontend/`, `simulator/`, `docs/`)가 각각 빌드되고 `docker compose up -d`로 MySQL이 뜨는 상태를 만든다. 이후 모든 작업이 기대는 공통 설정을 이때 넣는다: 주입용 `Clock` 빈 하나, 시각 직렬화 형식, 에러 응답 형식, 관리 포트의 actuator, `spring.jpa.open-in-view=false`, `ddl-auto=validate`.
 
 **착수 전 결정**
-- 백엔드 모듈 구조: ARCH 3.1의 `engine`(순수 Java)·`app` 멀티 모듈 / backend/AGENTS.md의 단일 모듈(`com.fourlane.auction`). 레인 엔진을 Spring 없이 쓰라는 PRD 9.7을 각 구조가 어떻게 지키는지 함께 비교한다 (11장 2번).
+- 백엔드 모듈 구조: 결정됨 (사용자 결정, 2026-10-27). ARCH 3.1의 `engine`(순수 Java)·`app` 멀티 모듈로 한다. 레인 엔진을 Spring 없이 쓰라는 PRD 9.7을 모듈 경계로 지킨다 (11장 2번).
 - Spring Boot 패치 버전, 앱·관리 포트 번호.
 - 프론트 라우터 등 추가 의존성 (새 의존성은 이유를 말하고 허락받는다).
 
 **할 일**
-- backend: Gradle(Kotlin DSL), Java 21, Spring Boot 4.x. `Clock.tick(Clock.systemUTC(), Duration.ofMillis(1))` 빈 (R1·R2). `Instant`를 밀리초 3자리 UTC 문자열로 쓰는 Jackson 설정 (R7). JDBC·Hibernate 시간대 UTC (R6). `BusinessException(ErrorCode)`와 전역 예외 처리로 `{ "error": { "code", "message" } }` (API 1.4, 9장 코드의 enum 뼈대).
+- backend: Gradle(Kotlin DSL), Java 21, Spring Boot 4.x. `Clock.tick(Clock.systemUTC(), Duration.ofMillis(1))` 빈 (R1·R2). `Instant`를 밀리초 3자리 UTC 문자열로 쓰는 Jackson 설정 (R7). JDBC·Hibernate 시간대 UTC (R6). `ApiException(ErrorCode)`와 전역 예외 처리로 API 1.4 형식 `{ "error": { "code", "message", … } }`. 추가 필드 `lane`(레인 상태 거절의 `epoch`, `seq`)과 `fields`(400 필드 에러)를 담을 수 있게 한다 (9장 코드의 enum 뼈대).
 - frontend: Vite + React + TypeScript + Tailwind + TanStack Query. Tailwind 디자인 토큰, `components/ui` 기본 컴포넌트(Button, Card, Modal, Toast, Badge, Spinner, EmptyState), Vite 프록시 `/api`·`/ws`.
 - 인프라: `docker-compose.yml`(MySQL 8.4), `.env.example`, `.gitignore`(`.env`, `application-local.yml`).
 - 문서: `docs/PROGRESS.md`, `docs/adr/` 생성.
@@ -474,7 +474,7 @@ PRD OQ-29에 따라 Should부터 뺀다. Must 작업은 빼지 않는다.
 화면이 없는 작업이다 (수직 분해의 예외). PRD 9.7이 엔진을 순수 코드로 먼저 검증하라고 하기 때문이다.
 
 **착수 전 결정**
-- 규칙의 위치: 순수 엔진 모듈 / JPA 엔티티의 도메인 메서드 (11장 2번). PRD M-07·9.7은 Spring에 의존하지 않을 것을 요구한다.
+- 규칙의 위치: 결정됨 (사용자 결정, 2026-10-27). 순수 엔진 모듈(`engine`)에 둔다. PRD M-07·9.7은 Spring에 의존하지 않을 것을 요구한다 (11장 2번).
 - CH-01 (가): 판단이 할 일 목록을 돌려주는가(후보 A2) / 포트를 직접 부르는가(후보 A1).
 - CH-02 (가): 상태 머신 표현 (A1 enum + 전이 메서드 / A2 전이 표 데이터 / A3 상태 패턴).
 - CH-03: 마감 타이머 후보 (A 취소·재예약 / B 취소하지 않는 확인 / C 고정 주기 틱 / D 큐 poll). `Tick` 안전망, 타이머 세대 번호, `gapEndsAt` 판정은 이미 정해졌다 (CHALLENGES CH-03 "정함").
@@ -1559,9 +1559,9 @@ PRD 10장의 미결 OQ와 ARCHITECTURE 부록 B의 빈칸을 어느 작업이 �
 | # | 어긋남 | 처리 |
 |---|---|---|
 | 1 | 입찰 v1(DB 락, 0.2)은 ARCHITECTURE의 기본안(레인 직렬 큐, 5·6장, 부록 A), PRD 6.5 C2·C3, API.md 7.3의 "레인 큐" 서술과 다르다. 원래 요청의 "v2(Redis)"는 ARCHITECTURE 1.3·10.3("Redis는 도입하지 않는다")과 CHALLENGES 부록 A와 다르다 | v1은 M2-01에서 ADR과 함께 문서를 고친다. v2는 0.2대로 M4-05에서 측정으로 고르고, Redis는 부록 A의 도입 조건을 지킨다 |
-| 2 | `backend/AGENTS.md`와 ARCHITECTURE가 다르다: 패키지 구조(`com.fourlane.auction`의 `event`·`lane`·`lot` vs ARCH 3.2의 `engine`·`app` 모듈), 경매 규칙의 위치(엔티티 도메인 메서드 vs Spring 없는 엔진, PRD 9.7), QueryDSL(ARCH 1.3에서 뺐다), Testcontainers의 Redis(ARCH: MVP에 Redis 없음) | M0-01(모듈 구조)과 M1-09(규칙의 위치)의 착수 전 결정에서 정하고, 정한 쪽에 맞춰 `backend/AGENTS.md`나 ARCHITECTURE를 고친다 |
+| 2 | `backend/AGENTS.md`와 ARCHITECTURE가 다르다: 패키지 구조(`com.fourlane.auction`의 `event`·`lane`·`lot` vs ARCH 3.2의 `engine`·`app` 모듈), 경매 규칙의 위치(엔티티 도메인 메서드 vs Spring 없는 엔진, PRD 9.7), QueryDSL(ARCH 1.3에서 뺐다), Testcontainers의 Redis(ARCH: MVP에 Redis 없음) | 해소 (2026-10-27): `backend/AGENTS.md`를 ARCHITECTURE 기준으로 고쳤다. 모듈 구조는 ARCH 3.1의 `engine`·`app`, 경매 규칙은 engine의 `LaneStateMachine`, 조회는 `@Query` + DTO 프로젝션, Testcontainers는 MySQL만이다. 입찰 동시성 규칙은 0.2와 M2-01을 따르도록 적었다 |
 | 3 | ARCHITECTURE 4.3의 마이그레이션 번호(V5 bid, V6 audit, V7 trade, V8 notification)가 이 문서의 작업 순서(거래 → 입찰 → 감사 로그 → 알림)와 다르다. Flyway는 적용한 번호보다 낮은 새 파일을 기본 설정에서 받지 않는다 | 번호는 적용 순서대로 매기고 파일 내용은 ARCH 4.4를 따른다. M2-01에서 ARCH 4.3을 고친다 |
-| 4 | `frontend/AGENTS.md`의 "endsAt"은 EVENTS.md의 `deadlineAt`이다. `features/lane`의 "입찰 피드"는 PRD P-03과 EVENTS에 없다 | M2-04·M2-05는 EVENTS.md를 따른다. 입찰 피드가 필요하면 PRD와 계약부터 바꾼다 |
+| 4 | `frontend/AGENTS.md`의 "endsAt"은 EVENTS.md의 `deadlineAt`이다. `features/lane`의 "입찰 피드"는 PRD P-03과 EVENTS에 없다 | 해소 (2026-10-27): `frontend/AGENTS.md`를 `deadlineAt`·`gapEndsAt`으로 고치고 "입찰 피드"를 뺐다. 입찰 피드가 필요하면 PRD와 계약부터 바꾼다 |
 | 5 | 원래 마일스톤은 k6 기준선을 M4에 두었지만 PRD 9.8·CH-11은 4주차 첫 부하 테스트를 요구한다 | 0.2대로 M2-10에 최소판을 둔다 |
 | 6 | OQ-38의 PRD 결정 시한(2주차)이 그 결정을 쓰는 M2-02(3주차)보다 이르다 | M1 끝에 정해 둔다 (9장) |
 | 7 | 요청의 "관련 과제(C1~C9)"와 CHALLENGES.md의 `CH-01`~`CH-12` | `CH-nn`을 쓴다 (0.2) |
