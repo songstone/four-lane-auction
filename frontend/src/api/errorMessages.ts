@@ -7,6 +7,11 @@ const messages: Record<string, string> = {
   FORBIDDEN: '접근 권한이 없습니다.',
   AUTH_SYNC_UNAVAILABLE: '로그인에는 HTTPS 또는 localhost에서 Web Locks를 지원하는 브라우저가 필요합니다.',
   LOGOUT_UNCONFIRMED: '서버 로그아웃을 확인하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.',
+  TOKEN_EXPIRED: '연결 인증이 만료되어 다시 연결하고 있습니다.',
+  TOKEN_INVALID: '연결 인증을 복구하고 있습니다.',
+  SUBSCRIPTION_DENIED: '실시간 구독이 거절되었습니다. 새로고침해 주세요.',
+  SEND_DENIED: '허용하지 않는 실시간 요청입니다. 새로고침해 주세요.',
+  FRAME_DENIED: '실시간 연결 요청이 거절되었습니다. 새로고침해 주세요.',
 };
 
 const fieldMessages: Record<string, string> = {
