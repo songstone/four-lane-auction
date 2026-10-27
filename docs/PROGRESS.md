@@ -3,7 +3,7 @@
 ## M0-05 첫 배포 준비
 
 - 작업일: 2026-10-27 (Asia/Seoul).
-- 상태: **이미지·서버 compose·배포 문서 준비 중 / 실제 서버 배포 검증 NOT_RUN**. 사용자 지시로 이번에는 서버 배포를 하지 않는다. M0-05 전체 완료가 아니다.
+- 상태: **이미지·서버 compose·배포 문서 준비와 로컬 검증 PASS / 실제 서버 배포 검증 NOT_RUN**. 사용자 지시로 이번에는 서버 배포를 하지 않는다. M0-05 전체 완료가 아니다.
 - 원본: [TASKS M0-05](TASKS.md#m0-05-첫-배포), 사용자 보충 지시와 범위 조정. TASKS 수용 기준 자체는 바꾸지 않는다.
 - 승인: 권장안 승인 후 M0-04 완료까지 대기. 사용자의 M0-04 검증 완료 통보와 착수 지시 후 시작했다.
 - 선행 확인: 최신 dev `9f1381f8c2c74658421a4b6c3f718e0bf638f98d`, 작업 트리 clean. [M0-04 PR #1](https://github.com/songstone/four-lane-auction/pull/1)의 최종 검증 본문, [dev 성공](https://github.com/songstone/four-lane-auction/actions/runs/40453469067), [실패 실행](https://github.com/songstone/four-lane-auction/actions/runs/40455257375)의 backend 실패·frontend 성공, [PR #2](https://github.com/songstone/four-lane-auction/pull/2)의 미머지 종료를 조회했다. 브랜치 보호도 재조회했다. 아래 M0-04 절의 미완료 표기는 당시 커밋의 스냅샷이며 최종 원격 증거는 PR #1 본문에 있다.
@@ -20,7 +20,7 @@
 - `deploy/.env.example`: 실제 비밀번호는 빈 값. `.env` 제외 규칙을 그대로 사용한다.
 - [DEPLOY](DEPLOY.md): SHA 태그와 정식 v0.1.0의 연결, 명령별 빌드·승인 후 push·서버 설정·pull·stop→start·검증·진단·이전 이미지 재배포를 적었다.
 - 기존 로컬 compose·bootRun·Vite·API·EVENTS·스키마·CI 워크플로는 수정하지 않는다. 단일 인스턴스 가드는 M3-09, Prometheus·Grafana는 M4-01, Actions 자동 배포는 M6-01이다.
-- 로컬 빌드·이미지 실행 증거는 검증 후 이 절에 추가한다. 이미지 push·Git push·PR 생성·AWS 명령은 실행하지 않은 상태다.
+- 로컬 빌드·이미지 실행 증거는 아래에 기록한다. 이미지 push·Git push·PR 생성·AWS 명령은 실행하지 않은 상태다.
 
 ### 준비 단계 로컬 실행
 
@@ -33,16 +33,44 @@
 | 필수값 거부 | PASS. IMAGE_TAG·DB명·사용자·앱/루트 비밀번호·DB_URL·Origin을 하나씩 빼면 config 실패. 미설정 샘플도 실패 | 위 Compose 결과. 정적 구성 검증이며 앱 실행 증거는 아님 |
 | 베이스 실행 확인 | Corretto 21.0.13, curl 8.21.0 포함 확인. 추가 OS 패키지 설치 없음 | 고정 digest의 임시 컨테이너 실제 실행 |
 
-검증 환경: Windows, 로컬 Corretto 21.0.10, Gradle 9.8.2, Node 24.11.1·npm 11.6.2, Docker Engine 28.5.1·Compose 2.40.0. 실행 중이던 이 checkout의 bootRun·Vite만 종료해 파일 잠금을 피했고 이미지 검증 후 복원할 예정이다. 기존 로컬 MySQL과 다른 프로젝트 컨테이너는 유지했다.
+검증 환경: Windows, 로컬 Corretto 21.0.10, Gradle 9.8.2, Node 24.11.1·npm 11.6.2, Docker Engine 28.5.1·Compose 2.40.0. 실행 중이던 이 checkout의 bootRun·Vite만 종료해 파일 잠금을 피했고 검사 후 복원해 관리 health와 Vite HTTP 200을 확인했다(`output/m0-05-restored-services.json`). 기존 로컬 MySQL과 다른 프로젝트 컨테이너는 유지했다.
+
+### 생성한 이미지
+
+- 원본 커밋: `95eae2cae58c9833885ae1ad4f981de89da83d5a`.
+- 로컬 이미지: `ghcr.io/songstone/four-lane-auction:sha-95eae2cae58c9833885ae1ad4f981de89da83d5a`.
+- 로컬 image ID: `sha256:091eef9a39b0890d1ee977d8b3bf18454b6d5a471b4414b10b92429192dd96f6`. **GHCR에는 push하지 않았다.** 이 ID를 공개 레지스트리에서 pull 검증한 digest로 취급하지 않는다.
+- 플랫폼 linux/amd64, 실행 사용자 `10001:10001`. OCI revision/version이 위 원본 SHA·태그와 일치한다. 이후 문서 증거 커밋은 실행 이미지의 소스를 바꾸지 않는다.
+- 빌드: 프론트 lint·typecheck·Vite build, Corretto JDK 21.0.13에서 Wrapper 9.8.2의 bootJar 성공. 실행 단계는 headless Corretto 21.0.13. 로그는 `output/m0-05-image-build.log`.
+- 최초 빌드는 최소 이미지의 xargs 부재로 실패했고, 같은 Wrapper JAR의 JVM 진입점으로 수정했다. 다음 시도는 실행용 headless 이미지에 javac가 없어 실패해 빌드 단계만 JDK 이미지로 분리했다. 실패 로그는 `output/m0-05-image-build-initial.log`, `output/m0-05-image-build-jre.log`에 보존했다. 프로젝트 의존성·Wrapper 검증을 우회하거나 테스트를 skip하지 않았다.
+
+### 로컬 이미지 실제 실행 증거
+
+별도 프로젝트 `fourlane-m0-05-smoke`, 별도 MySQL named volume, `127.0.0.1:18080`을 사용했다. AWS 서버·도메인·보안 그룹 확인이 아니다. 로컬 DB의 일회성 검증 비밀번호는 gitignore 대상 `output/m0-05-local.env`에만 넣었다.
+
+| 확인 | 실제 결과 | 증거 |
+|---|---|---|
+| prod 이미지 + 실제 MySQL | app·mysql healthy, 내부 health UP. Flyway V1~V4 | `output/m0-05-compose-up.log`, `output/m0-05-runtime-checks.json` |
+| SPA | 홈 HTML·빌드 JS 200. 실제 Chrome에서 홈과 빈 상태 3개, REST·WebSocket 녹색 배지 확인 | `output/m0-05-browser-snapshot.log`, `output/playwright/m0-05-connected.png` |
+| REST·404 계약 | RUNNING/SCHEDULED/FINISHED 각각 200·빈 items·UTC ms serverTime. 없는 API와 앱 포트의 actuator는 404 NOT_FOUND JSON | `output/m0-05-runtime-checks.json` |
+| WebSocket | 실제 /ws 연결 후 STOMP 1.2 CONNECTED 수신. 다른 Origin은 HTTP 403 거절 | 위 runtime 결과. WebSocket 101만으로 판정하지 않음 |
+| 같은 출처 | Chrome 요청 기록의 세 상태 API는 18080 출처·200. 연결 배지도 connected. 콘솔 error/warning 0 | `output/m0-05-browser-requests.log`, `output/m0-05-browser-console.log` |
+| 관리·DB 포트 | app publish는 localhost 18080→8080 하나, mysql publish 없음. 관리 주소는 내부 127.0.0.1. 같은 Docker bridge의 임시 peer는 app API 200, app:8081은 TCP 연결 거절(curl exit 7) | runtime 결과, `output/m0-05-peer-checks.json`. 실제 외부/SG 증거는 아님 |
+| 환경변수 누락 | 설정 없이 prod 이미지를 실행하면 필수 placeholder 오류로 exit 1 | `output/m0-05-prod-missing-env.json`, `.log` |
+| 이미지에 서버 설정 미포함 | image Config.Env에 DB·MYSQL·Origin 변수 없음. 실제 값은 compose 실행 환경에서만 전달 | `output/m0-05-image-env-check.log` |
+| stop→start | app stop 뒤 running app 0개 확인 후 같은 이미지를 start해 healthy·UP. 브라우저 두 배지도 다시 연결됨 | `output/m0-05-stop-start.log`, `output/m0-05-browser-after-restart.log`. 다른 버전 교체·M3 복구 검증은 아님 |
+| 배포 문서 | 로컬 링크 대상과 Bash·PowerShell 코드 블록 문법 검사 통과 | `output/m0-05-deploy-syntax.log`. 서버 명령 실제 실행으로 세지 않음 |
+
+검증 후 임시 이미지 프로젝트의 컨테이너·네트워크만 종료했고 named volume과 로컬 이미지는 유지했다. 기존 개발 서버·로컬 MySQL은 유지했다(`output/m0-05-cleanup.log`, `output/m0-05-final-local-state.json`). 직접 재현하려면 [DEPLOY 3절의 로컬 이미지 확인](DEPLOY.md#로컬에서-생성한-이미지를-직접-확인할-때)을 따른다. 서버 준비 후에는 DEPLOY 5절부터 사용자 실행 결과를 확인한다.
 
 ### TASKS 수용 기준과 남은 서버 검증
 
 | M0-05 수용 기준 | 이번 범위의 상태 | 나중에 필요한 증거 |
 |---|---|---|
-| 배포 주소 홈·배지·WebSocket | 서버 **NOT_RUN**. 로컬 이미지 검증 예정 | 실제 배포 주소의 REST 200·홈·STOMP CONNECTED |
-| 관리 포트 외부 비공개 | 서버 **NOT_RUN**. publish·바인딩 로컬 확인 예정 | 실제 서버 publish·SG 조회와 외부 TCP 접속 실패 |
-| 비밀번호 등 서버 환경변수 | 서버 **NOT_RUN**. 필수 변수·Git 제외 로컬 확인 예정 | 실제 서버 환경 공급·파일 권한 확인. 비밀값 원문 공유 불필요 |
-| 명령 단위 배포 문서 | DEPLOY 작성, 로컬 검증 예정 | 서버 단계 실행 결과와 HTTP 검증 기록 |
+| 배포 주소 홈·배지·WebSocket | 서버 **NOT_RUN**. 로컬 이미지에서는 PASS | 실제 배포 주소의 REST 200·홈·STOMP CONNECTED |
+| 관리 포트 외부 비공개 | 서버 **NOT_RUN**. publish·바인딩·peer 거절 로컬 PASS | 실제 서버 publish·SG 조회와 외부 TCP 접속 실패 |
+| 비밀번호 등 서버 환경변수 | 서버 **NOT_RUN**. 필수 변수·Git 제외·prod 누락 거부 로컬 PASS | 실제 서버 환경 공급·파일 권한 확인. 비밀값 원문 공유 불필요 |
+| 명령 단위 배포 문서 | DEPLOY 작성·문법 확인 PASS. 로컬 이미지 실행 PASS | 서버 명령 실제 실행은 NOT_RUN |
 
 M0 완료 기준 6·7의 정식 v0.1.0 배포, TLS·WSS, EC2 자원 확인은 **NOT_RUN**이다. 실제 서버 단계는 사용자가 준비한 뒤 DEPLOY 5절부터 결과를 확인하며 진행한다.
 

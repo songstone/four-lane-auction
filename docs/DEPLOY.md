@@ -62,6 +62,32 @@ docker image inspect --format '{{.Id}} {{.Architecture}} {{.Config.User}} {{json
 
 로컬 생성만으로 GHCR에 게시되지 않는다. 이미지 push는 다음 절의 별도 작업이며 실제 실행 여부는 PROGRESS에 남긴다.
 
+### 로컬에서 생성한 이미지를 직접 확인할 때
+
+이미 로컬에 생성된 이미지 태그는 PROGRESS의 이미지 기록에서 확인한다. 서버를 만들기 전에 확인할 수 있다. 샘플 복사는 최초 한 번만 하고 기존 설정 파일은 유지한다.
+
+```powershell
+New-Item -ItemType Directory -Force output | Out-Null
+if (-not (Test-Path output/local-image.env)) {
+    Copy-Item deploy/.env.example output/local-image.env
+}
+notepad output/local-image.env
+```
+
+IMAGE_TAG에는 로컬 이미지의 태그, DB_PASSWORD·MYSQL_ROOT_PASSWORD에는 새 로컬 검증용 비밀번호를 지정한다. APP_BIND_ADDRESS는 `127.0.0.1`, APP_HTTP_PORT는 미사용 포트 `18080`, WS_ALLOWED_ORIGINS는 `http://127.0.0.1:18080`으로 바꾼다. 나머지 DB 값은 샘플대로 쓰며 서버 비밀값은 사용하지 않는다.
+
+```powershell
+docker compose -p fourlane-image-check -f docker-compose.prod.yml --env-file output/local-image.env up -d --wait --wait-timeout 180
+curl.exe --fail --show-error --include 'http://127.0.0.1:18080/api/sessions?status=RUNNING'
+docker compose -p fourlane-image-check -f docker-compose.prod.yml --env-file output/local-image.env exec -T app curl --fail --silent http://127.0.0.1:8081/actuator/health
+```
+
+브라우저 `http://127.0.0.1:18080/`에서 홈·빈 상태 3개와 두 연결 배지를 확인한다. 이후 해당 임시 프로젝트만 종료한다. `down`은 named volume을 유지하므로 같은 프로젝트를 다시 쓸 때는 DB 비밀번호도 유지한다. 기존 로컬 개발 compose는 별도다.
+
+```powershell
+docker compose -p fourlane-image-check -f docker-compose.prod.yml --env-file output/local-image.env down
+```
+
 ### 나중에 정식 릴리스를 배포할 때
 
 사용자가 release PR을 머지하고 Git 태그 v0.1.0을 준비한 뒤에만 실행한다. 작업 트리가 clean인지 확인한 뒤 소스를 선택한다.
