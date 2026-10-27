@@ -61,7 +61,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpectedException(Exception exception) {
-        LOG.error("Unhandled request failure", exception);
+        // Exception messages/causes can embed passwords, JDBC bind values or tokens.
+        LOG.error("Unhandled request failure type={}", exception.getClass().getSimpleName());
         return ResponseEntity.internalServerError().contentType(MediaType.APPLICATION_JSON)
                 .body(ApiErrorResponse.of(ErrorCode.INTERNAL_ERROR));
     }

@@ -2,16 +2,17 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import type { SessionStatus } from './generated/models';
 import { listSessions } from './generated/sessions';
 import { ApiRequestError } from './errorMessages';
+import { authenticatedRequest } from './authenticatedRequest';
 
 export function useSessionList(status: SessionStatus) {
   return useInfiniteQuery({
     queryKey: ['sessions', status],
     queryFn: async ({ pageParam, signal }) => {
-      const response = await listSessions({
+      const response = await authenticatedRequest((options) => listSessions({
         status,
         size: 20,
         ...(pageParam === null ? {} : { cursor: pageParam }),
-      }, { signal });
+      }, options), { signal, public: true });
       if (response.status !== 200) {
         throw new ApiRequestError(response.data.error.code, response.data.error.message);
       }

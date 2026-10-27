@@ -1,13 +1,48 @@
 const messages: Record<string, string> = {
-  INVALID_REQUEST: '회차 조회 요청을 처리할 수 없습니다. 다시 조회해 주세요.',
-  INTERNAL_ERROR: '서버에서 회차를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  INVALID_REQUEST: '입력값을 확인해 주세요.',
+  INTERNAL_ERROR: '서버에서 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  UNAUTHENTICATED: '로그인이 필요합니다.',
+  INVALID_CREDENTIALS: '이메일 또는 비밀번호를 확인해 주세요.',
+  EMAIL_ALREADY_EXISTS: '이미 가입된 이메일입니다. 로그인해 주세요.',
+  FORBIDDEN: '접근 권한이 없습니다.',
+  AUTH_SYNC_UNAVAILABLE: '로그인에는 HTTPS 또는 localhost에서 Web Locks를 지원하는 브라우저가 필요합니다.',
+  LOGOUT_UNCONFIRMED: '서버 로그아웃을 확인하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.',
 };
 
+const fieldMessages: Record<string, string> = {
+  email: '올바른 이메일을 255자 이내로 입력해 주세요.',
+  password: '비밀번호는 8~64자이며 UTF-8 최대 72바이트입니다.',
+  nickname: '닉네임을 2~20자로 입력해 주세요. 중복은 허용됩니다.',
+};
+
+export interface FieldError { field: string; reason: string }
+
 export class ApiRequestError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(readonly code: string, message: string, readonly fields: FieldError[] = []) {
     super(message);
     this.name = 'ApiRequestError';
   }
+}
+
+export function responseError(data: { error: { code: string; message: string; fields?: FieldError[] } }) {
+  return new ApiRequestError(data.error.code, data.error.message, data.error.fields ?? []);
+}
+
+export function authFieldErrors(error: unknown): Record<string, string> {
+  return error instanceof ApiRequestError ? Object.fromEntries(error.fields.map(({ field }) =>
+    [field, fieldMessages[field] ?? '입력값을 확인해 주세요.'])) : {};
+}
+
+export function validateAuthForm(password: string, nickname?: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+  const length = Array.from(password).length;
+  if (length < 8 || length > 64 || new TextEncoder().encode(password).length > 72 || !password.trim()) {
+    fields.password = fieldMessages.password;
+  }
+  if (nickname !== undefined && (Array.from(nickname).length < 2 || Array.from(nickname).length > 20 || !nickname.trim())) {
+    fields.nickname = fieldMessages.nickname;
+  }
+  return fields;
 }
 
 export function apiErrorMessage(error: unknown): string {

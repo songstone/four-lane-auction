@@ -28,7 +28,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @WebMvcTest(controllers = ApiContractTest.ContractProbe.class)
-@Import({JacksonConfig.class, ApiContractTest.ContractProbe.class, ApiErrorController.class})
+@Import({JacksonConfig.class, ApiContractTest.ContractProbe.class, ApiErrorController.class,
+        com.fourlane.global.config.ClockConfig.class, com.fourlane.global.security.SecurityConfig.class,
+        com.fourlane.global.security.JwtConfig.class, com.fourlane.global.security.SecurityErrorHandler.class})
 @ActiveProfiles("test")
 class ApiContractTest {
     @Autowired

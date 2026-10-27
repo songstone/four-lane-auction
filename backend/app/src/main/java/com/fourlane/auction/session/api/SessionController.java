@@ -33,6 +33,9 @@ public class SessionController {
     @ApiResponse(responseCode = "500", description = "INTERNAL_ERROR",
             content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                     schema = @Schema(implementation = ApiErrorResponse.class)))
+    @ApiResponse(responseCode = "401", description = "UNAUTHENTICATED: 잘못된 토큰을 붙인 공개 요청",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
     public SessionListResponse list(
             @RequestParam SessionStatus status,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,

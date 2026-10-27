@@ -6,10 +6,15 @@
  */
 
 export * from './apiErrorResponse';
+export * from './authResponse';
 export * from './errorDetail';
 export * from './fieldViolation';
 export * from './laneReference';
 export * from './listSessionsParams';
+export * from './loginRequest';
+export * from './memberResponse';
+export * from './memberResponseRole';
 export * from './sessionListResponse';
 export * from './sessionStatus';
 export * from './sessionSummary';
+export * from './signupRequest';

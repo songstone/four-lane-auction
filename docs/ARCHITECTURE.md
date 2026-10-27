@@ -107,7 +107,7 @@
 | 영속 | Spring Data JPA | 조회 전용 쿼리는 `@Query`(JPQL)와 DTO 프로젝션으로 쓴다. QueryDSL은 확정 스택에서 뺐다 (결정됨 (리뷰)). 쓰는 곳이 조회 2~3개뿐이라 Boot 4·Hibernate 7 호환 확인과 애노테이션 처리 설정만 늘어난다. 조건을 조합하는 동적 조회가 여러 개 생기면 다시 본다 (CHALLENGES 부록 A) |
 | DB | MySQL 8.4 LTS (제안) | `CHECK` 제약을 강제하고(8.0.16부터), `DATETIME(3)`을 쓴다 |
 | 마이그레이션 | Flyway | MySQL 지원 모듈(`flyway-mysql`)이 따로 필요하다 |
-| 인증 | Spring Security + JWT | JWT 발급·검증은 Spring Security의 `spring-security-oauth2-jose`(Nimbus)로 한다 (제안). 별도 JWT 라이브러리 없이 만료 검증기(`JwtTimestampValidator`)에 주입한 `Clock`을 넣을 수 있다 (9장 R10) |
+| 인증 | Spring Security + JWT | M1-01 승인: Boot 4.1.2 Resource Server와 `spring-security-oauth2-jose`(Nimbus), 공용 JwtDecoder를 쓴다 (ADR-006). `AccessTokenValidator`가 주입 Clock으로 필수 claim과 만료 정각을 검사한다 (9장 R10). 기본 60초 유예를 사용하지 않는다 |
 | 실시간 | Spring WebSocket + STOMP, Simple Broker | SockJS는 쓰지 않는다 (제안). k6와 브라우저 모두 순수 WebSocket을 쓴다 |
 | API 문서 | springdoc-openapi-starter-webmvc-api 3.2.0 | M0-03 사용자 승인. Boot 4.1.2 대응. REST만 문서화한다. 계약의 원본은 [API.md](API.md)이고, 생성된 OpenAPI가 그와 같은지 계약 테스트로 본다. STOMP 메시지는 [EVENTS.md](EVENTS.md)에 둔다 |
 | API 클라이언트 생성 | Orval 8.45.0 + 브라우저 Fetch | M0-03 사용자 승인 ([ADR-003](adr/ADR-003-M0-03-api-generation-and-connections.md)). 실행 중인 백엔드 `/v3/api-docs` → `frontend/src/api/generated/`. 생성 코드 커밋, 화면의 직접 fetch 금지 |
@@ -318,7 +318,7 @@ backend/
 3. 엔티티 연관관계(`@ManyToOne` 등)는 같은 도메인 패키지 안에서만 둔다. 다른 도메인은 ID 값으로 참조한다. 예: `Trade.lotId`는 `Long`이다.
 4. 쓰기는 자기 도메인 테이블에만 한다. 예외는 PRD가 원자성을 요구하는 레인 전이 하나다. 마감과 거래 생성은 한 트랜잭션이어야 하므로(CH-09 시나리오 1), `auction.runtime`의 `JpaLaneStore`가 트랜잭션 안에서 `trade`의 생성 메서드를 부른다. 호출 방향은 `auction → trade`이고 반대 방향은 없다.
 5. 조회 전용 쿼리(내 입찰 내역, 내 거래)는 화면에 필요한 만큼 다른 도메인 테이블을 조인해도 된다. 결과는 읽기 전용 DTO로만 나간다.
-6. 도메인 패키지끼리 순환 의존하지 않는다. 허용 방향: `bid → auction`, `auction → trade, notification, audit`, `trade → member, notification`, `realtime → auction.runtime`(스냅샷 조회). 모든 패키지는 `global`을 쓸 수 있다.
+6. 도메인 패키지끼리 순환 의존하지 않는다. 허용 방향: `auth → member`(M1-01 승인, ADR-006), `bid → auction`, `auction → trade, notification, audit`, `trade → member, notification`, `realtime → auction.runtime`(스냅샷 조회). 모든 패키지는 `global`을 쓸 수 있다.
 7. 위 규칙과 9장의 시간 출처 규칙은 CI 정적 검사로 확인한다. 시간 출처 검사는 Gradle 빌드 단계의 검색으로 한다 (M0-02 사용자 승인, 2026-10-27, ADR-002). Java 호출과 SQL·쿼리를 함께 검사한다. 그 밖의 의존 규칙 검사 도구는 아직 정하지 않았다.
 
 ### 3.4 포트 (교체 지점)
@@ -388,13 +388,16 @@ erDiagram
 | `V2__item.sql` | `item`, `item_image` | 1주차 |
 | `V3__bid_policy.sql` | 호가 정책과 기본 정책 v1 시드 | 2주차 |
 | `V4__auction.sql` | `auction_session`, `lane`, `lot`, `lane_transition` | 2~3주차 |
-| `V5__bid.sql` | `bid`, `idempotency_record` | 4주차 |
-| `V6__audit_log.sql` | `audit_log` (S-03) | 5주차 |
-| `V7__trade.sql` | `trade`, `payment`, `member_warning` | 6주차 |
-| `V8__notification.sql` | `notification` (S-01) | 6주차 |
+| `V5__member_warning.sql` (실제 적용, M1-01) | `member_warning`. trade FK는 M3-07에서 추가 | M1-01 |
+| `V5__bid.sql` (초기 계획 번호, 실제 번호 아님) | `bid`, `idempotency_record` | 4주차 |
+| `V6__audit_log.sql` (초기 계획 번호) | `audit_log` (S-03) | 5주차 |
+| `V7__trade.sql` (초기 계획 번호) | `trade`, `payment`, 기존 `member_warning`에 trade FK 추가 | 6주차 |
+| `V8__notification.sql` (초기 계획 번호) | `notification` (S-01) | 6주차 |
 
 - 이미 적용한 파일은 고치지 않는다. 바꿀 것이 생기면 새 버전 파일로 낸다.
-- **ADMIN 계정**은 마이그레이션이나 시드 데이터로만 만든다 (AC-01-4). 비밀번호 해시를 저장소에 커밋하지 않도록, 계정 행은 배포 환경 값(이메일, 비밀번호 해시)을 받아 넣는다. 방식(Flyway placeholder, Java 마이그레이션)은 1주차에 정한다. 로컬 개발용 계정은 로컬 프로필에서만 도는 별도 위치에 둔다.
+- 실제 적용은 V1~V5다. 이후 파일은 예약하지 않고 적용 순서대로 V6부터 매긴다 (ADR-002, ADR-006). 아래 SQL 예시의 초기 계획 번호는 그대로 실제 파일명으로 쓰지 않는다.
+- M1-01 승인: ADMIN은 기본 비활성 `admin-seed` 프로필의 Java 시드로 만든다. 환경변수 이메일·BCrypt 해시가 필수이며 기존 USER 승격과 기존 ADMIN 해시 덮어쓰기는 금지한다 (ADR-006).
+- **ADMIN 계정**은 시드로만 만든다 (AC-01-4). 비밀번호 해시를 저장소에 커밋하지 않도록 환경 값(이메일, 비밀번호 해시)을 받아 넣는다. 개발은 `local,admin-seed`, 운영은 `prod,admin-seed`를 명시 실행하고 정상 앱에는 시드 프로필을 켜지 않는다.
 - 시연·부하 테스트용 대량 데이터(회원, 출품물)는 마이그레이션에 넣지 않는다 [OQ-27].
 
 ### 4.4 SQL
@@ -731,17 +734,10 @@ CREATE TABLE payment (
     CONSTRAINT fk_payment_trade FOREIGN KEY (trade_id) REFERENCES trade (id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
-CREATE TABLE member_warning (
-    id          BIGINT      NOT NULL AUTO_INCREMENT,
-    member_id   BIGINT      NOT NULL,
-    trade_id    BIGINT      NOT NULL,
-    created_at  DATETIME(3) NOT NULL,
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_warning_trade (trade_id),           -- 거래 1건당 경고 최대 1회 (CH-10 시나리오 2)
-    KEY idx_warning_member (member_id),
-    CONSTRAINT fk_warning_member FOREIGN KEY (member_id) REFERENCES member (id),
-    CONSTRAINT fk_warning_trade FOREIGN KEY (trade_id) REFERENCES trade (id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+-- member_warning은 M1-01의 실제 V5에서 이미 생성한다.
+-- trade 생성 작업(M3-07)은 새 마이그레이션에 아래 FK를 반드시 추가한다.
+ALTER TABLE member_warning ADD CONSTRAINT fk_warning_trade
+    FOREIGN KEY (trade_id) REFERENCES trade (id);
 ```
 
 - 결제 기한 길이는 회차가 아니라 애플리케이션 설정으로 두고, 거래가 생길 때 `payment_due_at`으로 확정한다. PRD 6.4 표와 A1의 서술이 다르게 읽혀 부록 B에 올렸다.
@@ -1676,6 +1672,9 @@ CH-12와 같다. 셋 다 확인되기 전에는 착수하지 않는다 (PRD C-03
 
 ## 11. 보안 고려사항
 
+M1-01 승인(ADR-006): 비밀번호 8~64 코드 포인트·UTF-8 최대 72바이트, Access 15분, Refresh 로그인부터 절대 7일(회전 시 최초 만료 유지), 둘 다 주입 Clock과 유예 0초로 판단한다. Refresh 행 잠금 뒤 Clock을 읽고 이전 폐기·새 행 저장을 한 트랜잭션으로 처리한다. local/test의 Secure만 false이고 prod는 항상 true다. 운영 HTTP 배포에서는 인증 검증을 완료할 수 없다.
+
+
 | 영역 | 위협 | 대응 | 근거 (PRD) |
 |---|---|---|---|
 | 계정 | 비밀번호 유출 | BCrypt로 저장한다 (Spring Security `DelegatingPasswordEncoder`) | M-01 |
@@ -1755,9 +1754,9 @@ PRD에 없어서 설계에 넣지 않았거나, 설계하려면 PRD의 판단이
 |---|---|---|---|
 | B-1 | 로그아웃 | 해소: PRD 0.5의 OQ-45로 로그아웃 API를 두기로 했다 (2.7, 11장). Refresh Token이 `HttpOnly` 쿠키라 클라이언트가 버릴 수 없었다 | — |
 | B-2 | 로그인 시도 제한 | 넣지 않았다 | 비밀번호 무차별 대입 위험 |
-| B-3 | Access·Refresh Token 수명 | (제안) 값만 적었다 (11장). 계약도 같은 값(Access 15분)이다 (API.md 1.3) | 보안과 재연결 빈도 |
+| B-3 | Access·Refresh Token 수명 | 해소: OQ-50. Access 15분, Refresh 절대 7일, 만료 정각부터 무효·유예 0초 (M1-01 승인) | 보안과 재연결 빈도 |
 | B-4 | 회차 이름 | 컬럼이 없다. 홈 목록은 예정 시각과 상태로만 구분된다 | P-01 화면 |
-| B-5 | 닉네임 규칙 (길이, 중복 허용) | 길이만 (제안). 계약은 2~20자다 (API.md 3.1). 2자 이상이라 마스킹이 의미를 가진다. 중복 허용은 미정 | PRD 9.6 회원 식별 |
+| B-5 | 닉네임 규칙 (길이, 중복 허용) | 해소: OQ-49. 2~20 코드 포인트, 중복 허용 (M1-01 승인) | PRD 9.6 회원 식별 |
 | B-6 | 이미지 장수·용량·형식 상한, 메타데이터(EXIF 위치 정보) 제거 | 계약에 (제안) 값을 적었다: 1~10장, 장당 10MB, JPEG·PNG·WebP (API.md 6.4). 폼이 미리 검사하려면 값이 있어야 했다. 메타데이터 제거는 넣지 않았다 | 저장 공간, 판매자 위치 노출 |
 | B-7 | 최저 낙찰가를 판매자 본인(U-02)과 운영자(A-01)에게 보여주는가 | PRD 6.3은 "화면 어디에도 노출하지 않는다", AC-02-6은 "판매자가 아닌 사용자에게"라고 한다. 이 문서는 공개 경로만 막았다 | 내 출품 목록, 검수 화면의 DTO |
 | B-8 | 결제 기한 길이가 회차 설정인가 앱 설정인가 | 앱 설정으로 두고 거래에 `payment_due_at`으로 확정했다. PRD 6.4 표는 회차 설정 아래에 두었고 A1은 시간 파라미터 3개만 회차별이라고 한다 | `auction_session` 컬럼 |

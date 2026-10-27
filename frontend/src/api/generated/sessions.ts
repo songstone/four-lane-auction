@@ -6,9 +6,266 @@
  */
 import type {
   ApiErrorResponse,
+  AuthResponse,
   ListSessionsParams,
-  SessionListResponse
+  LoginRequest,
+  MemberResponse,
+  SessionListResponse,
+  SignupRequest
 } from './models';
+
+export type signupResponse201 = {
+  data: MemberResponse
+  status: 201
+}
+
+export type signupResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type signupResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type signupResponse409 = {
+  data: ApiErrorResponse
+  status: 409
+}
+
+export type signupResponseSuccess = (signupResponse201) & {
+  headers: Headers;
+};
+export type signupResponseError = (signupResponse400 | signupResponse401 | signupResponse409) & {
+  headers: Headers;
+};
+
+export type signupResponse = (signupResponseSuccess | signupResponseError)
+
+export const getSignupUrl = () => {
+
+
+
+
+  return `/api/auth/signup`
+}
+
+/**
+ * @summary 회원가입
+ */
+export const signup = async (signupRequest: SignupRequest, options?: RequestInit): Promise<signupResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getSignupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(signupRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: signupResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as signupResponse
+}
+
+
+
+export type refreshResponse200 = {
+  data: AuthResponse
+  status: 200
+}
+
+export type refreshResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type refreshResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type refreshResponseSuccess = (refreshResponse200) & {
+  headers: Headers;
+};
+export type refreshResponseError = (refreshResponse400 | refreshResponse401) & {
+  headers: Headers;
+};
+
+export type refreshResponse = (refreshResponseSuccess | refreshResponseError)
+
+export const getRefreshUrl = () => {
+
+
+
+
+  return `/api/auth/refresh`
+}
+
+/**
+ * @summary 토큰 재발급
+ */
+export const refresh = async ( options?: RequestInit): Promise<refreshResponse> => {
+
+  const res = await fetch(getRefreshUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: refreshResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as refreshResponse
+}
+
+
+
+export type logoutResponse204 = {
+  data: void
+  status: 204
+}
+
+export type logoutResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type logoutResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type logoutResponseSuccess = (logoutResponse204) & {
+  headers: Headers;
+};
+export type logoutResponseError = (logoutResponse400 | logoutResponse401) & {
+  headers: Headers;
+};
+
+export type logoutResponse = (logoutResponseSuccess | logoutResponseError)
+
+export const getLogoutUrl = () => {
+
+
+
+
+  return `/api/auth/logout`
+}
+
+/**
+ * @summary 로그아웃
+ */
+export const logout = async ( options?: RequestInit): Promise<logoutResponse> => {
+
+  const res = await fetch(getLogoutUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: logoutResponse['data'] = body ? JSON.parse(body) : undefined
+  return { data, status: res.status, headers: res.headers } as logoutResponse
+}
+
+
+
+export type loginResponse200 = {
+  data: AuthResponse
+  status: 200
+}
+
+export type loginResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type loginResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type loginResponseSuccess = (loginResponse200) & {
+  headers: Headers;
+};
+export type loginResponseError = (loginResponse400 | loginResponse401) & {
+  headers: Headers;
+};
+
+export type loginResponse = (loginResponseSuccess | loginResponseError)
+
+export const getLoginUrl = () => {
+
+
+
+
+  return `/api/auth/login`
+}
+
+/**
+ * @summary 로그인
+ */
+export const login = async (loginRequest: LoginRequest, options?: RequestInit): Promise<loginResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(loginRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: loginResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as loginResponse
+}
+
+
 
 export type listSessionsResponse200 = {
   data: SessionListResponse
@@ -20,6 +277,11 @@ export type listSessionsResponse400 = {
   status: 400
 }
 
+export type listSessionsResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
 export type listSessionsResponse500 = {
   data: ApiErrorResponse
   status: 500
@@ -28,7 +290,7 @@ export type listSessionsResponse500 = {
 export type listSessionsResponseSuccess = (listSessionsResponse200) & {
   headers: Headers;
 };
-export type listSessionsResponseError = (listSessionsResponse400 | listSessionsResponse500) & {
+export type listSessionsResponseError = (listSessionsResponse400 | listSessionsResponse401 | listSessionsResponse500) & {
   headers: Headers;
 };
 
@@ -68,4 +330,54 @@ export const listSessions = async (params: ListSessionsParams, options?: Request
 
   const data: listSessionsResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as listSessionsResponse
+}
+
+
+
+export type getMeResponse200 = {
+  data: MemberResponse
+  status: 200
+}
+
+export type getMeResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type getMeResponseSuccess = (getMeResponse200) & {
+  headers: Headers;
+};
+export type getMeResponseError = (getMeResponse401) & {
+  headers: Headers;
+};
+
+export type getMeResponse = (getMeResponseSuccess | getMeResponseError)
+
+export const getGetMeUrl = () => {
+
+
+
+
+  return `/api/me`
+}
+
+/**
+ * @summary 내 정보
+ */
+export const getMe = async ( options?: RequestInit): Promise<getMeResponse> => {
+
+  const res = await fetch(getGetMeUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getMeResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getMeResponse
 }
