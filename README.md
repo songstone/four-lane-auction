@@ -8,10 +8,18 @@
 docker compose up -d
 docker compose ps  # mysql이 healthy가 된 뒤 백엔드 실행
 cd backend
+export JWT_SECRET_BASE64="$(openssl rand -base64 32)"
 ./gradlew :app:bootRun
 ```
 
-Windows PowerShell에서는 JDK 21을 가리키는 `JAVA_HOME`을 설정하고 `./gradlew.bat :app:bootRun`을 실행합니다. 다른 터미널에서 프론트를 시작합니다.
+Windows PowerShell에서는 JDK 21을 가리키는 `JAVA_HOME`을 설정하고 아래처럼 키를 환경변수로 만든 뒤 실행합니다. 키를 출력하거나 커밋하지 않습니다. 키가 바뀌면 기존 Access Token은 무효이며 유효한 Refresh로 복구합니다.
+
+```powershell
+$env:JWT_SECRET_BASE64 = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+./gradlew.bat :app:bootRun
+```
+
+다른 터미널에서 프론트를 시작합니다.
 
 ```sh
 cd frontend

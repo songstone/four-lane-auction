@@ -4,6 +4,24 @@
 
 ## 1. 배포 단위와 준비
 
+### M1-01 인증 설정 추가
+
+- M1-01 이미지부터 `JWT_SECRET_BASE64`가 필수다. 32바이트 이상의 무작위 값을 Base64로 만든 후 서버 환경 파일에만 보관한다. 예: 서버 Bash의 `openssl rand -base64 32` 결과를 안전하게 저장한다. 키를 출력한 터미널 기록·채팅·Git에 남기지 않는다. 키 교체는 기존 Access를 무효화하며, 유효한 Refresh로 다시 발급받을 수 있다.
+- prod 쿠키는 항상 `Secure; HttpOnly; SameSite=Strict; Path=/api/auth`다. ADR-005의 HTTP·WS 배포 준비만으로 로그인·쿠키·탭 간 Web Locks 동작을 검증했다고 볼 수 없다. **운영 인증에는 HTTPS가 필요하다.** TLS 구성과 실제 서버 인증 검증은 아직 NOT_RUN이다.
+- ADMIN은 가입 API로 만들 수 없다. `admin-seed` 프로필을 명시적으로 켤 때만 환경변수 `ADMIN_SEED_EMAIL`, `ADMIN_SEED_PASSWORD_HASH`를 사용한다. 해시는 `{bcrypt}$2…` 형식이며 저장소에 넣지 않는다. 기존 ADMIN은 그대로 두고 기존 USER 승격·기존 비밀번호 덮어쓰기는 거절한다. 정상 앱 기동에는 이 변수가 필요 없다.
+- 서버에서 실행할 때는 먼저 app을 stop하고 다음 명령으로 별도 비웹 프로세스를 실행한 뒤 정상 app을 start한다. 이미지·DB·환경 파일과 기존 승인 경계는 아래 배포 절차와 같다. 아래는 절차이며 실제 서버 실행 증거가 아니다.
+
+```bash
+# 이미 안전하게 설정한 ADMIN_SEED_EMAIL, ADMIN_SEED_PASSWORD_HASH를 환경으로 전달한다.
+docker compose -p fourlane-prod -f docker-compose.prod.yml --env-file /opt/fourlane/.env stop app
+docker compose -p fourlane-prod -f docker-compose.prod.yml --env-file /opt/fourlane/.env run --rm --no-deps \
+  -e SPRING_PROFILES_ACTIVE=prod,admin-seed -e SPRING_MAIN_WEB_APPLICATION_TYPE=none \
+  -e ADMIN_SEED_EMAIL -e ADMIN_SEED_PASSWORD_HASH app
+docker compose -p fourlane-prod -f docker-compose.prod.yml --env-file /opt/fourlane/.env start app
+```
+
+`member_warning`은 V5에 먼저 생성됐다. 이후 M3-07의 trade 생성 마이그레이션은 이 테이블을 다시 만들지 않고 `fk_warning_trade`를 반드시 추가해야 한다 (ADR-006).
+
 - 서버 제안: 서울 `ap-northeast-2`, EC2 `t3.medium`(x86_64, 4GiB). 측정용 서버는 M4-03에서 따로 정한다. Linux x86_64와 Docker Engine·Compose v2가 필요하다. 아래 서버 명령은 Bash 기준이다.
 - 서비스는 app·mysql 두 개다. app 메모리 상한 1,536MiB와 JVM `-Xms256m -Xmx768m`, mysql 상한 1,536MiB와 buffer pool 512MiB를 초기 예산으로 둔다. 실제 EC2 자원 확인은 나중에 한다.
 - SPA·REST `/api/**`·WebSocket `/ws`는 앱이 한 출처에서 제공한다. 공개 웹 포트는 기본 TCP 80 하나다. MySQL 3306·관리 8081은 publish하지 않고 보안 그룹에서도 허용하지 않는다. 서버 관리 접속은 사용자가 마련한다.

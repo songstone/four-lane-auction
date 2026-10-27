@@ -38,6 +38,9 @@ springdoc:
   paths-to-match: /api/**
 
 fourlane:
+  auth:
+    jwt-secret-base64: ${JWT_SECRET_BASE64}
+    secure-cookie: true
   websocket:
     allowed-origins: ${WS_ALLOWED_ORIGINS}
 
@@ -64,6 +67,8 @@ server:
   port: ${SERVER_PORT:8080}
 
 fourlane:
+  auth:
+    secure-cookie: false
   websocket:
     allowed-origins: ${WS_ALLOWED_ORIGINS:http://127.0.0.1:5173}
 
@@ -87,6 +92,10 @@ server:
   port: 0
 
 fourlane:
+  auth:
+    # Public test-only key; never a local/prod fallback.
+    jwt-secret-base64: dGVzdC1vbmx5LTMyLWJ5dGUta2V5LTAtMDEyMzQ1Njc4OQ==
+    secure-cookie: false
   websocket:
     allowed-origins: http://127.0.0.1:5173
 

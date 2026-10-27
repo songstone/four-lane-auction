@@ -384,17 +384,18 @@ erDiagram
 
 | 파일 | 내용 | 필요 시점 (IDEA 10장) |
 |---|---|---|
-| `V5__member_warning.sql` (실제 적용 순서, M1-01) | `member_warning`. trade FK는 M3-07에서 추가 | M1-01 |
 | `V1__member_auth.sql` | `member`, `refresh_token` | 1주차 |
 | `V2__item.sql` | `item`, `item_image` | 1주차 |
 | `V3__bid_policy.sql` | 호가 정책과 기본 정책 v1 시드 | 2주차 |
 | `V4__auction.sql` | `auction_session`, `lane`, `lot`, `lane_transition` | 2~3주차 |
-| `V5__bid.sql` | `bid`, `idempotency_record` | 4주차 |
-| `V6__audit_log.sql` | `audit_log` (S-03) | 5주차 |
-| `V7__trade.sql` | `trade`, `payment`, `member_warning` | 6주차 |
-| `V8__notification.sql` | `notification` (S-01) | 6주차 |
+| `V5__member_warning.sql` (실제 적용, M1-01) | `member_warning`. trade FK는 M3-07에서 추가 | M1-01 |
+| `V5__bid.sql` (초기 계획 번호, 실제 번호 아님) | `bid`, `idempotency_record` | 4주차 |
+| `V6__audit_log.sql` (초기 계획 번호) | `audit_log` (S-03) | 5주차 |
+| `V7__trade.sql` (초기 계획 번호) | `trade`, `payment`, 기존 `member_warning`에 trade FK 추가 | 6주차 |
+| `V8__notification.sql` (초기 계획 번호) | `notification` (S-01) | 6주차 |
 
 - 이미 적용한 파일은 고치지 않는다. 바꿀 것이 생기면 새 버전 파일로 낸다.
+- 실제 적용은 V1~V5다. 이후 파일은 예약하지 않고 적용 순서대로 V6부터 매긴다 (ADR-002, ADR-006). 아래 SQL 예시의 초기 계획 번호는 그대로 실제 파일명으로 쓰지 않는다.
 - M1-01 승인: ADMIN은 기본 비활성 `admin-seed` 프로필의 Java 시드로 만든다. 환경변수 이메일·BCrypt 해시가 필수이며 기존 USER 승격과 기존 ADMIN 해시 덮어쓰기는 금지한다 (ADR-006).
 - **ADMIN 계정**은 마이그레이션이나 시드 데이터로만 만든다 (AC-01-4). 비밀번호 해시를 저장소에 커밋하지 않도록, 계정 행은 배포 환경 값(이메일, 비밀번호 해시)을 받아 넣는다. 방식은 위 admin-seed로 결정했다. 로컬 개발용 계정은 로컬 프로필에서만 도는 별도 위치에 둔다.
 - 시연·부하 테스트용 대량 데이터(회원, 출품물)는 마이그레이션에 넣지 않는다 [OQ-27].

@@ -25,7 +25,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(SessionController.class)
-@Import(JacksonConfig.class)
+@Import({JacksonConfig.class, com.fourlane.global.config.ClockConfig.class,
+        com.fourlane.global.security.SecurityConfig.class, com.fourlane.global.security.JwtConfig.class,
+        com.fourlane.global.security.SecurityErrorHandler.class})
 @ActiveProfiles("test")
 class SessionControllerTest {
     @Autowired MockMvc mvc;

@@ -40,17 +40,18 @@ class SchemaAndTimeIntegrationTest extends MySqlIntegrationTest {
 
     @TestConfiguration(proxyBeanMethods = false)
     @EntityScan(basePackageClasses = {MemberTimeProbe.class,
+            com.fourlane.member.domain.Member.class, com.fourlane.auth.domain.RefreshToken.class,
             com.fourlane.auction.session.domain.AuctionSession.class})
     static class PersistenceProbes {
     }
 
     @Test
-    void appliesExactlyV1ThroughV4AndSeedsOnlyTheThreePolicyTiers() {
+    void appliesV1ThroughV5AndSeedsOnlyTheThreePolicyTiers() {
         assertThat(jdbc.queryForObject("SELECT VERSION()", String.class)).startsWith("8.4.13");
         assertThat(jdbc.queryForList("""
                 SELECT version FROM flyway_schema_history WHERE success = 1 ORDER BY installed_rank
-                """, String.class)).containsExactly("1", "2", "3", "4");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history", Integer.class)).isEqualTo(4);
+                """, String.class)).containsExactly("1", "2", "3", "4", "5");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history", Integer.class)).isEqualTo(5);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bid_increment_policy", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForMap("SELECT id, version, created_by FROM bid_increment_policy"))
@@ -65,18 +66,18 @@ class SchemaAndTimeIntegrationTest extends MySqlIntegrationTest {
     void reapplyingMigrationsDoesNotChangeHistoryOrDuplicateThePolicy() {
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history", Integer.class)).isEqualTo(5);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bid_increment_tier", Integer.class)).isEqualTo(3);
     }
 
     @Test
-    void allTenApplicationTablesUseInnoDbAndAllTimeColumnsUseDatetime3WithoutDbTimeDefaults() {
+    void allElevenApplicationTablesUseInnoDbAndAllTimeColumnsUseDatetime3WithoutDbTimeDefaults() {
         assertThat(jdbc.queryForList("""
                 SELECT table_name FROM information_schema.tables
                 WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'
                 ORDER BY table_name
                 """, String.class)).containsExactly("auction_session", "bid_increment_policy", "bid_increment_tier",
-                "item", "item_image", "lane", "lane_transition", "lot", "member", "refresh_token");
+                "item", "item_image", "lane", "lane_transition", "lot", "member", "member_warning", "refresh_token");
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM information_schema.tables
                 WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'
