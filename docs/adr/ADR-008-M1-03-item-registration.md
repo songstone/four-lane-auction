@@ -31,3 +31,12 @@
 - 공개 응답 계약 장치는 실제 REST 실행 카탈로그와 재귀 JSON 검사로 구성하고 handler 누락을 실패시킨다. 후속 작업은 실제 응답·WebSocket 수신을 등록한다. 미구현 이벤트의 완료를 주장하지 않는다.
 
 실제 검증·실패 재현·직접 확인 방법과 NOT_RUN은 PROGRESS M1-03에 기록한다.
+
+## 후속 작업의 응답 계약 등록
+
+GEN 검증 보완: Swagger nullable 객체 참조는 OpenAPI 3.1 `anyOf [CurrentLot, null]`로 만든다. Orval 8.45.0은 기본 Blob 디코더가 JSON 오류도 Blob으로 읽으므로 getImage에만 `forceSuccessResponse: true`를 적용해 성공은 Blob·오류는 JSON `error.info`와 `status`로 제공한다. 이미지 화면은 계약대로 응답 imageUrl을 img src에 사용한다. 나머지 API는 기존 status/data 반환을 유지하며 생성 파일은 직접 고치지 않는다. 실제 생성 함수의 업로드·조회·404 검증 결과는 PROGRESS에 있다.
+
+- `ResponseContractCatalog.rest(method, path, audience, status, actualCall)`에 실제 MockMvc/HTTP 실행 결과를 등록한다. 실제 제품 handler와 경로 집합을 비교하므로 엔드포인트 추가 후 카탈로그가 빠지면 실패한다. 인증 API와 오류 JSON도 포함하고, 이미지 바이트는 별도 binary 항목으로 검사한다.
+- `event(type, audience, actualCapture)`는 WebSocketStompClient 등으로 실제 수신한 JSON을 공급한다. M1-03에는 제품 이벤트 발행자가 없으므로 이벤트 실행·범위 집합 모두 비어 있다. M2 이후 해당 작업이 구현한 이벤트 enum/종류 집합을 `verifyEventCoverage`에 공급해야 한다. 이것은 현재 미구현 이벤트에 대한 실행 증거가 아니다.
+- `ReservePriceAssertions`는 모든 중첩 필드 이름과 숫자·문자열 표식을 검사한다. 표식은 시작가·ID·현재가와 겹치지 않는 917431000원이며 별도 실제 저장 행에서 값이 있음을 먼저 확인한다. 시작가와 같은 기본 최저가는 값 부재 검사로 구별할 수 없으므로, 그 사례는 DB 기본값 검증과 필드명 검사로 확인한다.
+- 후속: M1-04 운영자 검수 응답·B-7, M1-07 편성 응답, M1-08 회차 상세·Lot 상세, M2 스냅샷·레인 이벤트. 운영자에게 최저가를 허용하는 결정이 생기면 승인된 해당 경로·audience만 좁게 허용하고 공개 경로 검사에는 예외를 두지 않는다.

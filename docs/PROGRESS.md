@@ -1,5 +1,158 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-03 출품 등록과 내 출품 목록
+
+- 작업일: 2026-10-28 (Asia/Seoul).
+- 상태: **완료 (M1-03 로컬 수용 기준·아래 실행 증거 기준)**. 이 기록 뒤 Git push·dev 대상 PR을 생성하며 원격 링크·CI 결과는 PR 본문과 완료 보고에서 확인한다. PR 머지는 하지 않는다.
+- 원본: TASKS 0장·M1-03·9장, PRD M-02·AC-02-1~7·U-01·U-02 일부·OQ-28, API 4.5·6.4·6.5·1.4, ARCH 4.4 V2·11장·B-6/7. M1-03의 직접 관련 CH는 없고 CH-05 입찰 후보를 새로 선택하지 않았다.
+- 시작 SHA: `163546821e1c91e174b7abb868465a76e78a03e2`. `git fetch origin --prune` 후 dev=origin/dev, clean 확인. M1-01 PR #4 머지 `3e254b31e14ecc5c133cb2be4010755f0d0a88c8`의 ancestry 확인 뒤 `feature/M1-03-item-registration` 생성.
+- 작업 위치: 기본 checkout `C:\Users\jitin81\Documents\dev\lab\four-lane-auction`. 별도 worktree 없음.
+- 승인: 사용자 ①~⑩ 권장안 전체 승인. BE → GEN → FE → 통합, 실제 검증·기록·목적별 로컬 커밋에 더해 **Git push·PR 생성까지 명시 승인**했다. 이미지 push·태그 push·머지는 승인 범위가 아니다.
+- 결정 기록: [ADR-008](adr/ADR-008-M1-03-item-registration.md), PRD OQ-52·53과 OQ-28 부분 결정, ARCH 11·부록 A/B. API 0.4 → 0.5를 승인 범위대로 먼저 반영했다. EVENTS 0.3은 그대로다.
+- 의존성·스키마: 새 Java/npm 의존성과 Flyway 추가 없음. V1~V5 불변. Tika는 비교만 하고 도입하지 않았다.
+- 커밋: `ec1b85b` 정책·계약, `c359af0` BE·관련 테스트·저장 설정, `6329482` GEN, `8b74e98` FE. 이 절·ADR 보완은 마지막 docs 커밋이다.
+
+### 승인한 구현과 경계
+
+- 이미지 1~10장, 장당 **10,000,000바이트**, 전체 multipart 요청 **101,000,000바이트**. JPEG·PNG·WebP 시그니처 직접 판별, EXIF 원본 유지. 시그니처는 전체 이미지 디코딩·완전한 손상 검출을 뜻하지 않는다.
+- 이름 1~100 코드 포인트(공백만 거절), 설명 최대 2,000 코드 포인트. 두 가격은 1,000원 단위, 1,000원 이상 10억 원 이하, 최저 낙찰가 ≥ 시작가. 최저가 생략·빈 값은 시작가로 저장한다.
+- 등록 뒤 수정·철회 API는 없다. 반려 Item은 남기고 새 Item으로 다시 신청한다. 판매자 본인 조회에도 최저 낙찰가 필드가 없다. 운영자 공개 여부는 M1-04 미결이다.
+- `ImageStorage`는 Spring MultipartFile을 모른다. UUID v4의 소문자 32자리 hex 키로 CREATE_NEW 저장하며 사용자 파일명·Content-Type을 저장 판정에 쓰지 않는다.
+- 파일을 모두 저장한 뒤 별도 application `@Transactional`에서 Item·이미지 행을 커밋한다. 확정 롤백·트랜잭션 시작 전 실패만 파일을 정리하고 COMMITTED/UNKNOWN은 보존한다. 컨트롤러는 커밋 후 201 DTO를 만든다.
+- 이미지 GET은 커밋된 `item_image`를 먼저 확인한다. 저장 중·고아 파일은 키를 알아도 메타데이터가 없으면 404다. 검사한 Content-Type, nosniff, 365일 immutable 캐시를 보낸다.
+- local bootRun의 작업 디렉터리를 backend로 명시해 `.local-data/images`를 쓴다. `ITEM_IMAGE_STORAGE_ROOT`로 재정의한다. Git·Docker build context에서 이 디렉터리를 제외했다. prod는 `/app/data/images`와 `item-images` 볼륨을 쓰며 uid/gid 10001이 쓴다.
+- 기존 전역 예외 처리의 413 정규화가 실제 servlet 한도 경로에도 작동함을 확인했다. 예외 핸들러를 추가로 바꾸지 않았다. Tomcat max-swallow-size=-1은 거절 본문 소비를 허용해 JSON 수신을 돕지만 추가 네트워크 I/O 비용을 낸다.
+- 내 출품 조회는 JWT sub로 회원을 한정하고 `(createdAt, id)` 내림차순 키셋 커서를 사용한다. 커서는 회원에 묶고 다른 회원의 커서를 400으로 거절한다. 이번 단계는 검수 대기·반려·승인을 표시한다. 편성 이후 계산·currentLot은 M1-07·M2 후속이다.
+- FE는 생성된 함수만 호출한다. 회원별 Query 키와 로그아웃·회원 변경 시 취소/제거를 적용한다. 업로드 POST의 자동 재시도는 없고 계정 신원이 달라지면 재전송·늦은 화면 이동을 막는다. 로그인 복귀, 로딩·빈 상태·오류·다음 페이지를 처리한다.
+
+### 단계별 실제 실행 증거
+
+| 단계 | 실제 결과 | 로컬 증거 |
+|---|---|---|
+| BE 최종 | `./gradlew.bat clean build --console=plain --info` 성공, 14 actionable tasks 모두 실행. verifyTimeSources 79파일·위반 0 | `output/m1-03/backend-clean-build.log` |
+| JUnit | UTC test 165회 + 서울 testSeoul 165회 = 330회. 같은 165개를 두 JVM에서 실행. 각각 20클래스, failures/errors/skipped 0 | `output/m1-03/test-summary.json`, `test-results/test/*.xml`, `test-results/testSeoul/*.xml` |
+| 새 검사 | 새 테스트 46개. MVC, 실제 MySQL·HTTP, 파일 저장, 시그니처·가격·텍스트, 공용 노출 계약 | 위 XML. engine은 NO-SOURCE이며 엔진 기능 검증은 아님 |
+| 실제 multipart | 10장×10,000,000바이트 수락. 파일 한도+1의 Content-Length·chunked 요청과 요청 전체 101MB 초과가 모두 413 JSON. 영구 파일·행 증가 0 | MultipartLimitHttpIntegrationTest 4개, 두 JVM에서 실행 |
+| 병렬 등록 | 두 스레드를 CountDownLatch로 출발, 같은 원본 파일명의 등록 200라운드/JVM. JVM마다 400행·400파일, 키 충돌·소유자 혼합 0. 두 JVM 합계 400라운드·800등록 | ItemRegistrationConcurrencyTest. 처리량·지연 성능 측정은 아님 |
+| 저장 실패 | 부분 스트림·두 번째 저장 실패 정리, 실제 MySQL fk_item_seller 위반 롤백·파일 삭제, 메타데이터 실패 주입, 커밋 직전 예외 롤백 | LocalImageStorageTest, ItemRegistrationFailureIntegrationTest |
+| 커밋 뒤 실패 | 실제 MySQL 커밋 후 호출자 예외를 주입해 행·파일 유지 확인. UNKNOWN 완료 상태는 분기 정책 검사 | 같은 실패 통합 클래스. UNKNOWN의 실제 DB 네트워크 단절 재현은 NOT_RUN |
+| curl | bootRun의 등록 201, 생략 최저가 DB 대조, 금액 오류, ADMIN/익명, 위장 JPG, 413, 회원 분리, 이미지 바이트·헤더 등 19항목 PASS | `output/m1-03/curl-checks.json`, 개별 응답 JSON·image-headers.txt |
+| GEN | 실제 `/v3/api-docs`에서 Orval 8.45.0 재생성·typecheck 통과, 생성 코드 직접 수정 없음. 생성 함수로 실제 multipart 201·nullable 목록·비노출·200 Blob·404 JSON 오류 확인 | `gen-api.log`, `gen-typecheck.log`, `generated-client-check.json` |
+| FE 최종 | lint·typecheck·build PASS. FE 진입 뒤 backend tree는 `c359af0`와 동일 | `final-lint.log`, `final-typecheck.log`, `final-frontend-build.log`, Git diff |
+| 리포트·민감값 | 기존 CI 리포트 검증기 PASS. Git 추적·비무시 파일과 M1-03 앱/빌드/가림 처리한 브라우저 로그 235파일에서 실제 로컬 비밀값 5개 검색 일치 0 | `ci-report-verifier.log`, `credential-scan.json`. 무시되는 자격 파일은 검사 대상·공개 증거에서 제외 |
+| 로컬 컨테이너 | Linux prod 설정으로 실제 가입·로그인·출품 후 app 컨테이너 재생성. UID 10001·이미지 디렉터리 쓰기, 새 컨테이너에서 같은 URL 200·원본 SHA-256 동일 | `docker-build.log`, `docker-proof.log`, `docker-persistence.json` |
+
+컨테이너 검증 소스는 FE 커밋 `8b74e98ff2dd86b8de42daee3d8716fd13601b4b`, 로컬 이미지 태그는 `ghcr.io/songstone/four-lane-auction:sha-8b74e98ff2dd86b8de42daee3d8716fd13601b4b`다. app ID는 `aba093956be2…`에서 `c1c4dc25fc41…`로 달라졌고 원본·교체 전·교체 후 이미지 SHA-256은 모두 `2F27CFD21A3CACE4A37C3E6F86A0A4A3C11E6F4EF81E01B9F88993D64D8C9747`이었다. 임시 `fourlane-m103-proof` 컨테이너·네트워크만 down했고 볼륨·로컬 이미지는 유지했다. 기존 개발 MySQL은 유지했다. 레지스트리 이미지 push·AWS 배포·운영 TLS 증거가 아니다.
+
+### 최저 낙찰가 공용 계약 검사
+
+- 실제 제품 REST handler 9개와 카탈로그 등록 경로를 대조한다. 현재 인증·공개·본인·다른 회원·ADMIN·오류·이미지의 실제 응답 16사례를 실행한다. 제품 경로가 추가됐는데 카탈로그에 없으면 실패한다.
+- 재귀 JSON 검사로 `reservePrice` 및 이름 표기 변형, 금액 표식의 숫자·문자열 노출을 검사한다. `reserveNotMet`은 허용한다. 표식 917431000원을 실제 DB에 저장했음을 먼저 확인한다. 시작가와 같은 기본 최저가 사례는 별도 DB 검증과 필드 검사로 구분한다.
+- 이미지 성공은 바이트·헤더로 분리하고 오류 JSON은 검사한다. 요청 DTO에는 reservePrice가 필요하므로 요청 스키마를 응답으로 오인해 검사하지 않는다.
+- M1-04·07·08, M2 이후의 응답·실제 수신 이벤트 등록 방법은 ADR-008 후속 절에 있다. 현재 제품 이벤트 발행자가 없으므로 스냅샷·브로드캐스트의 전체 AC-02-6 완료를 주장하지 않는다.
+
+### 실제 화면 검증
+
+실제 Chrome·bootRun·Vite를 사용했다. 아래 증거는 `output/playwright/m1-03/`에 있다.
+
+| 시나리오 | 결과와 범위 | 증거 |
+|---|---|---|
+| 익명 진입·로그인 복귀 | USER 전용 URL → 로그인 → 원래 출품 등록 화면 | ui-login-return.log |
+| 등록 완주 | 파일 선택 순서·삭제·대표 이미지, 실제 POST 201 → 내 목록 검수 대기, 업로드 이미지 800×600 디코딩 | ui-registration.log, registration-filled.png, my-items-desktop.png |
+| 입력·이미지 사전 검사 | 이미지 필수, 시작가/최저가 단위·역전, 위장 JPG·10MB 초과·11장 선택을 차단. 잘못된 폼의 등록 POST 0건 | ui-registration.log, ui-other-user.log |
+| 목록 페이지 | 실제 API로 만든 데이터 26건을 20+6건으로 표시, 중복 이름·다음 페이지 잔류 0 | ui-list-states.log |
+| 검수 표시 | 실제 DB fixture의 APPROVED·REJECTED·반려 사유를 API로 조회해 표시 | review-stages-mobile.png. 검수 승인·반려 API 완주는 M1-04 |
+| 로딩·오류 복구 | 실제 backend 200의 전달만 1.5초 늦춰 로딩 관찰, 네트워크 연결 실패 주입 → 오류 → 실제 200 복구 | ui-list-states.log, list-loading.png, list-network-error.png. 응답 본문·상태 합성 없음 |
+| 회원 변경 | 다른 USER 로그인 시 기존 회원 목록 없음·빈 상태, 새 등록은 그 회원의 목록 1건. 최저가 생략 저장을 실제 DB 1000=1000으로 대조 | ui-other-user.log, empty-other-user.png, other-user-item.png |
+| ADMIN | 출품 메뉴 없음, 등록·내 목록 직접 URL 모두 차단, USER 목록 쿼리 실행 0건 | ui-admin.log, admin-forbidden.png. 서버 403은 curl·MVC에서 별도 검증 |
+| 업로드 중 로그아웃 | Chrome 네트워크 업로드 속도만 2000B/s로 제한. 원본 multipart 그대로 실제 201이 늦게 도착해도 익명 홈 유지. 재로그인 후 실제 커밋 Item 조회 | ui-logout-during-upload.log, logout-during-upload.png. 서버 응답·시간 합성 없음 |
+| 모바일·저장소 | 390×844에서 폼·목록 캡처를 열어 배치·줄바꿈 확인, 가로 넘침 없음. 확인한 local/sessionStorage 키 0, uncaught JS 예외 0 | registration-mobile.png, my-items-mobile.png, ui-other-user.log |
+
+예상한 초기 Refresh 401, 의도한 네트워크 실패와 검증 도구의 실패 실행은 콘솔에 남는다. 모든 콘솔 항목이 0이었다는 뜻은 아니다. 검증용 이미지·계정·검수 상태 fixture는 실제 저장·조회 입력이며 제품 코드의 하드코딩이나 가짜 API 응답이 아니다.
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 근거 |
+|---|---|---|
+| AC-02-1 | PASS | 실제 multipart·DB·이미지 순서·검수 대기 생성, curl 201와 U-01 → U-02 |
+| AC-02-2 | PASS | 이미지 누락 400 REQUIRED, 행·영구 파일 증가 없음, 폼 사전 차단 |
+| AC-02-3 | PASS | 시작가·최저가 각각 12345 등 거절, NOT_MULTIPLE_OF_1000 및 폼 메시지 |
+| AC-02-4 | PASS | 최저가 < 시작가에 LESS_THAN_START_PRICE, 실제 curl·폼 |
+| AC-02-5 | PASS | 생략·빈 값의 실제 MySQL 저장값 = 시작가. 브라우저 생략 등록도 1000=1000 |
+| AC-02-6 이번 범위 | PASS | 실제 응답 카탈로그의 필드·값 검사, 다른 회원 분리, 생성 클라이언트·브라우저 실제 목록 확인. 미래 스냅샷·이벤트는 후속 |
+| AC-02-7 | PASS | ADMIN POST 403, 익명 401, ADMIN 메뉴·직접 URL 차단 |
+| 위장 JPG / 상한 초과 | PASS | 시그니처 400 UNSUPPORTED_IMAGE_TYPE, servlet 파일·요청 한도 413 IMAGE_TOO_LARGE JSON |
+| 이미지 nosniff | PASS | 실제 바이트 일치·검사한 Content-Type·nosniff·immutable 캐시, 없는 파일/메타데이터 404 JSON |
+
+### 재현 중 수정한 문제
+
+- MVC slice의 JWT 발급 빈 누락과 null matcher 사용을 고쳤다. 커밋 직전 실패 주입은 추상 Repository의 real-method 호출 대신 실제 application 트랜잭션 안의 beforeCommit으로 옮겼다. 실제 MySQL FK 실패도 별도로 추가했다.
+- 기존 SchemaAndTimeIntegrationTest의 명시적 EntityScan에 Item 패키지를 포함했다. 기존 테스트·검증 조건은 유지했다.
+- OpenAPI 3.1에서 nullable $ref가 잘못 표현되는 것을 실제 JSON으로 확인해 `anyOf [CurrentLot, null]`로 보완하고 계약 검사·생성 타입을 확인했다. Orval의 이미지 Blob 오류 처리는 getImage의 지원 옵션으로 JSON error.info·status를 읽게 했다. 다른 생성 API의 응답 방식은 유지했다.
+- 초기 로그 경로 오류로 남은 중복 테스트 실행이 리포트와 충돌해 해당 checkout의 실행만 종료했다. 수정 전 실패·중단 실행은 PASS에 포함하지 않고, 최종 단일 clean build의 XML을 새로 보관했다.
+- 검수 화면 fixture를 넣는 CLI의 문자셋 오류는 UTF-8 hex literal로 바로잡고 실제 API를 재조회했다. 생산 API로 입력한 한글 데이터는 정상이다.
+- 무기한 응답 보류 방식의 검증 후크를 없애고 전용 브라우저 컨텍스트를 다시 열었다. multipart를 도구가 재전송한 실험은 원본 파일을 보존하지 못해 폐기했다. 최종 로그아웃 경합은 원본 브라우저 요청에 Chrome 네트워크 제한만 적용해 다시 통과했다. 로딩은 유한 지연 후 원본 200 전달·후크 정리를 확인했다.
+
+### 직접 확인하는 방법
+
+Windows에서는 이 checkout의 bootRun을 먼저 종료하고 빌드한다. 기본 Java가 7인 환경이므로 Java 21을 명시한다.
+
+```powershell
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+Set-Location C:\Users\jitin81\Documents\dev\lab\four-lane-auction\backend
+.\gradlew.bat clean build
+# 특정 검사만 재현할 때
+.\gradlew.bat :app:test --tests 'com.fourlane.item.MultipartLimitHttpIntegrationTest'
+.\gradlew.bat :app:test --tests 'com.fourlane.global.contract.ReservePriceContractTest'
+Set-Location ..\frontend
+npm run lint
+npm run typecheck
+npm run build
+```
+
+별도 터미널에서 실행한다. 정상 local에는 admin-seed를 켤 필요가 없다. ADMIN 확인이 필요하면 DEPLOY의 명시적 시드 절차를 따른다.
+
+```powershell
+Set-Location C:\Users\jitin81\Documents\dev\lab\four-lane-auction
+docker compose up -d mysql
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+$env:JWT_SECRET_BASE64 = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+Set-Location backend
+.\gradlew.bat :app:bootRun
+# 다른 터미널: 저장소의 frontend에서 npm run dev
+```
+
+1. `http://127.0.0.1:5173/#/items/new`로 들어가 본인의 USER로 로그인한다. 등록 화면으로 복귀하는지 확인한다.
+2. 정상 JPEG/PNG/WebP를 고르고 이름·시작가 50000을 입력한다. 최저가를 비워 등록하면 내 목록에 검수 대기·대표 이미지·시작가가 보인다.
+3. 이미지 없음, 시작가/최저가 12345, 최저가 49000, 11장·10MB 초과·텍스트 JPG를 각각 시도해 오류와 등록 차단을 확인한다.
+4. 다른 USER로 로그인하면 본인 목록만 보인다. ADMIN에는 메뉴가 없고 직접 URL도 막힌다. 승인·반려를 만드는 실제 운영 기능은 M1-04다.
+5. 네트워크 탭에서 POST 201·GET 목록·이미지 200을 확인한다. 목록 JSON에 reservePrice가 없고 이미지 응답에 nosniff가 있는지 확인한다.
+
+curl은 로그인 응답의 Access Token을 `$USER1`에 두고 실행한다. 이미지 경로는 본인 파일로 바꾼다.
+
+```powershell
+$API = 'http://127.0.0.1:8080'
+curl.exe -i -X POST "$API/api/items" -H "Authorization: Bearer $USER1" `
+  -F 'name=필름카메라' -F 'startPrice=50000' -F 'images=@C:\path\camera.jpg'
+# 201. startPrice=12345 → 400 NOT_MULTIPLE_OF_1000
+# reservePrice=49000 추가 → 400 LESS_THAN_START_PRICE
+# images를 빼면 400 REQUIRED, ADMIN 토큰은 403
+curl.exe -i "$API/api/me/items?size=20" -H "Authorization: Bearer $USER1"
+# 응답 imageUrl을 그대로 GET: 이미지 바이트, Content-Type, nosniff 확인
+curl.exe -i "$API/api/images/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+# 404 application/json, error.code=IMAGE_NOT_FOUND
+```
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 파일 I/O를 먼저 끝내 DB 연결 점유를 줄이고, DB 커밋 전 모든 파일을 확보한다. 파일과 DB는 원자적이지 않아 앱 강제 종료·정리 실패 때 고아 파일이 남는다. UNKNOWN에서 파일을 지우면 실제 커밋 행의 이미지가 깨지므로 보존한다. 자동 정리는 없으며 앱 정지 후 DB와 대조한다(DEPLOY).
+- 커밋 뒤 응답이 유실되거나 로그아웃과 겹쳐도 등록 자체는 남을 수 있다. POST 멱등 계약은 없으므로 자동 재시도하지 않는다. 임의 재전송은 중복 Item을 만들 수 있다. 외부 파일 삭제·볼륨 손실·전원 장애의 원자성은 보장하지 않는다.
+- Clock 역행 시 나중 등록한 물품이 앞선 시각으로 정렬될 수 있다. 커서는 동률의 id 순서를 정하며 페이지 사이 고정 스냅샷을 보장하지 않는다. 신규 락·경매 타이머·입찰 설계는 없다.
+- 후속: M1-04 검수 API·운영자 B-7·공용 계약 등록, M1-07 편성 이후 stage·중복 편성/OQ-28, M1-08 회차/Lot 공개 응답, M2 스냅샷·실제 이벤트 등록, M3-08 재출품. 기존 M3-07 trade FK 후속도 그대로다.
+- **NOT_RUN:** 실제 DB 커밋 ACK 유실·전원 장애·파일시스템 손실·고아 파일 자동 복구, 운영 HTTPS/Secure 쿠키·외부 배포·AWS·이미지 레지스트리 push/pull·부하/성능, 미구현 검수/편성/입찰/스냅샷/이벤트 완주. 로컬 HTTP·DB·브라우저·Linux 컨테이너의 증거를 이들과 바꾸어 쓰지 않는다.
+
 ## M1-02 STOMP 연결 인증
 
 - 작업일: 2026-10-27 (Asia/Seoul).
