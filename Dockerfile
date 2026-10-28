@@ -22,7 +22,7 @@ ARG VCS_REF
 ARG IMAGE_VERSION
 RUN test -n "$VCS_REF" && test -n "$IMAGE_VERSION" \
     && command -v curl >/dev/null \
-    && mkdir /app && chown 10001:10001 /app
+    && mkdir -p /app/data/images && chown 10001:10001 /app /app/data /app/data/images
 LABEL org.opencontainers.image.source="https://github.com/songstone/four-lane-auction" \
       org.opencontainers.image.revision="$VCS_REF" \
       org.opencontainers.image.version="$IMAGE_VERSION"

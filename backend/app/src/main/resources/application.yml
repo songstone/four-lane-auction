@@ -26,8 +26,15 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: false
+  servlet:
+    multipart:
+      max-file-size: 10000000B
+      max-request-size: 101000000B
+      file-size-threshold: 0
 
 server:
+  tomcat:
+    max-swallow-size: -1
   error:
     include-exception: false
     include-message: never
@@ -38,6 +45,8 @@ springdoc:
   paths-to-match: /api/**
 
 fourlane:
+  image-storage:
+    root: ${ITEM_IMAGE_STORAGE_ROOT:./.local-data/images}
   auth:
     jwt-secret-base64: ${JWT_SECRET_BASE64}
     secure-cookie: true
@@ -113,6 +122,10 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+
+fourlane:
+  image-storage:
+    root: ${ITEM_IMAGE_STORAGE_ROOT}
 
 server:
   port: ${SERVER_PORT}

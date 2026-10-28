@@ -51,3 +51,8 @@ val testSeoul = tasks.register<Test>("testSeoul") {
 tasks.named("check") {
     dependsOn(testSeoul)
 }
+
+// Keep the approved local .local-data/images path relative to backend/, not app/.
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    workingDir = rootProject.projectDir
+}

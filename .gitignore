@@ -13,6 +13,7 @@ dist/
 *.tsbuildinfo
 output/
 .playwright-cli/
+.local-data/
 
 # Editors and logs
 .idea/
