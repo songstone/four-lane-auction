@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 버전 | 0.5 (초안) |
+| 버전 | 0.6 (초안) |
 | 작성일 | 2026-10-23 |
 | 변경 이력 | 0.4 M1-01 승인: 비밀번호 UTF-8 72바이트 제한·코드 포인트 길이, 닉네임 중복 허용, Refresh 절대 7일·만료 경계·로컬 Secure 예외 / 0.1 최초 작성 / 0.2 프론트 관점 검토 반영 ([부록 B](#부록-b-프론트-관점-검토)): 로그아웃·내 정보 API, 출품물 진행 단계(`stage`)와 편성 가능 판정, 알림 미읽음 수, 다중 탭 재발급, 공개 API의 잘못된 토큰, 이미지 상한 값, 과거 예정 시각 거절. 화면별 데이터 출처 표([부록 A](#부록-a-화면별-데이터-출처))와 계약 질문([11장](#11-계약을-쓰며-찾은-질문))을 더함 / 0.3 계약 질문 CQ-01~04가 PRD OQ-45~48로 결정되어 해당 항목의 (제안)을 뗌. 12장의 차이를 PRD 0.5·ARCHITECTURE 0.3에 반영함. 로그아웃이 쿠키를 받도록 Refresh Token 쿠키 경로를 `/api/auth`로 넓힘 (1.3) |
 | 근거 문서 | [PRD.md](PRD.md) 0.5, [ARCHITECTURE.md](ARCHITECTURE.md) 0.3 |
@@ -793,6 +793,8 @@ Content-Type: application/json
 
 ### 7.1 출품물 검수
 
+M1-04 승인 (2026-10-28): 운영자는 상세 응답에서만 `reservePrice`를 조회한다. 목록·판매자 조회·공개 응답에는 없다. 검수 결과 알림은 M3-06에서 구현한다.
+
 #### `GET /api/admin/items`
 
 A-01(검수 대기 목록), A-03(편성할 출품물 목록).
@@ -838,6 +840,7 @@ A-01 검수 상세.
   "description": "1980년대 제품. 셔터 정상 작동.",
   "images": [ { "url": "/api/images/9f3c0d…", "sortOrder": 0 } ],
   "startPrice": 50000,
+  "reservePrice": 100000,
   "sellerNickname": "송골매",
   "reviewStatus": "PENDING_REVIEW",
   "stage": "PENDING_REVIEW",
@@ -849,19 +852,19 @@ A-01 검수 상세.
 ```
 
 - `lots`: 이 Item의 지난 Lot (재출품 이력). 최신순.
-- 최저 낙찰가는 없다. 운영자에게 보여 줄지는 [B-7].
+- `reservePrice`는 필수 정수(원)다. ADMIN 상세에서만 제공한다 (B-7, PRD OQ-54).
 
 **에러**: `404 ITEM_NOT_FOUND`
 
 #### `POST /api/admin/items/{itemId}/approve`
 
-**응답** `200`: `{ "itemId": 31, "reviewStatus": "APPROVED", "reviewedAt": "…" }`. 판매자에게 `REVIEW_RESULT` 알림이 간다.
+**응답** `200`: `{ "itemId": 31, "reviewStatus": "APPROVED", "reviewedAt": "…" }`. 판매자 `REVIEW_RESULT` 알림은 M3-06에서 붙인다.
 
 #### `POST /api/admin/items/{itemId}/reject`
 
-**요청**: `{ "reason": "이미지가 흐려 상태를 확인할 수 없습니다." }` (1~500자)
+**요청**: `{ "reason": "이미지가 흐려 상태를 확인할 수 없습니다." }` (원문 1~500 코드 포인트, 공백만인 값 거절, 원문 보존). 누락·공백은 `fields.reason=REQUIRED`, 초과는 `TOO_LONG`이다.
 
-**응답** `200`: `{ "itemId": 31, "reviewStatus": "REJECTED", "reviewedAt": "…" }`. 판매자에게 `REVIEW_RESULT` 알림이 간다.
+**응답** `200`: `{ "itemId": 31, "reviewStatus": "REJECTED", "reviewedAt": "…" }`. 판매자 `REVIEW_RESULT` 알림은 M3-06에서 붙인다.
 
 **에러** (두 API 공통): `404 ITEM_NOT_FOUND`, `422 ITEM_NOT_PENDING_REVIEW`(이미 검수함. `error.reviewStatus`에 현재 상태), `400 INVALID_REQUEST`(반려 사유)
 
@@ -1212,7 +1215,7 @@ A-05. 버전 내림차순, 페이지 없음 (버전 수가 적다).
 | [OQ-41] PENDING Lot 강제 종료 | `422 LOT_NOT_BIDDING` | 허용하면 새 이벤트가 필요하다 | 없음 |
 | [B-4] 회차 이름 | 없음 | `title` 필드가 더해질 수 있다 | 예정 시각으로 부른다 |
 | [B-6] 이미지 상한 | M1-03에서 확정: 10장, 장당 10,000,000바이트, 요청 전체 101,000,000바이트, JPEG·PNG·WebP | 해소 | 폼에서 미리 검사 |
-| [B-7] 판매자·운영자에게 최저 낙찰가 | 판매자 본인 조회에도 없음(M1-03 확정). 운영자는 M1-04 미결 | `/api/admin/items/{id}`에 `reservePrice`가 더해질 수 있다 | 없음 |
+| [B-7] 판매자·운영자에게 최저 낙찰가 | 판매자 조회 비노출. M1-04 확정: ADMIN 상세에만 reservePrice 제공 | 결정 완료 (PRD OQ-54) | ADMIN 상세만 표시 |
 
 ---
 
