@@ -19,6 +19,7 @@ export function AuthHeader() {
         {auth.status === 'loading' ? <Spinner label="로그인 확인 중" /> : auth.member ? <>
           <span>{auth.member.nickname}님</span>
           <Badge>{auth.member.role === 'ADMIN' ? '운영자' : '일반 회원'}</Badge>
+          {auth.member.role === 'ADMIN' && <a href="#/admin/sessions" className="text-sm text-brand">회차 관리</a>}
           {auth.member.role === 'ADMIN' && <a href="#/admin/items" className="text-sm text-brand">출품 검수</a>}
           {auth.member.role === 'ADMIN' && <a href="#/admin/bid-policies" className="text-sm text-brand">호가 정책</a>}
           {auth.member.role === 'USER' && <><a href="#/items/new" className="text-sm text-brand">출품 등록</a>

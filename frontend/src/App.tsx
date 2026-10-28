@@ -1,3 +1,4 @@
+import { AdminSessionPage } from './pages/AdminSessionPage';
 import { HomePage } from './pages/HomePage';
 import { useSyncExternalStore } from 'react';
 import { LoginPage } from './pages/LoginPage';
@@ -26,6 +27,7 @@ export function App() {
     url.pathname === '/signup' ? <SignupPage returnTo={returnTo} /> :
     url.pathname === '/items/new' ? <RequireUser returnTo="/items/new"><ItemRegistrationPage /></RequireUser> :
     url.pathname === '/me/items' ? <RequireUser returnTo="/me/items"><MyItemsPage /></RequireUser> :
+    url.pathname === '/admin/sessions' ? <RequireAdmin returnTo="/admin/sessions"><AdminSessionPage /></RequireAdmin> :
     url.pathname === '/admin/items' ? <RequireAdmin><AdminItemReviewPage /></RequireAdmin> :
     url.pathname === '/admin/bid-policies' ? <RequireAdmin returnTo="/admin/bid-policies"><AdminBidPolicyPage /></RequireAdmin> :
     url.pathname === '/me' ? <AccountPage /> : <HomePage />;

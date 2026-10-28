@@ -1,3 +1,4 @@
+import { serverClock } from '../features/time/serverClock';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { SessionStatus } from './generated/models';
 import { listSessions } from './generated/sessions';
@@ -16,6 +17,7 @@ export function useSessionList(status: SessionStatus) {
       if (response.status !== 200) {
         throw new ApiRequestError(response.data.error.code, response.data.error.message);
       }
+      serverClock.sample(response.data.serverTime);
       return response.data;
     },
     initialPageParam: null as string | null,
