@@ -1,3 +1,4 @@
+import type { ItemStage } from './generated/models';
 const messages: Record<string, string> = {
   INVALID_REQUEST: '입력값을 확인해 주세요.',
   INTERNAL_ERROR: '서버에서 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
@@ -17,9 +18,11 @@ const messages: Record<string, string> = {
   IMAGE_NOT_FOUND: '이미지를 찾을 수 없습니다.',
   AUTH_SESSION_CHANGED: '로그인 계정이 바뀌었습니다. 현재 계정으로 다시 확인해 주세요.',
   SESSION_NOT_FOUND: '회차를 찾을 수 없습니다. 목록을 다시 확인해 주세요.',
-  SESSION_NOT_SCHEDULED: '이미 시작한 회차는 설정을 변경할 수 없습니다.',
+  SESSION_NOT_SCHEDULED: '이미 시작한 회차는 편성이나 설정을 변경할 수 없습니다.',
   SCHEDULED_START_IN_PAST: '예정 시작 시각은 서버의 현재 시각보다 뒤여야 합니다.',
   SESSION_RESULT_UNCONFIRMED: '처리 결과가 불확실하면 다시 제출하기 전에 목록이나 상세를 새로 조회해 주세요.',
+  LANE_NOT_FOUND: '레인을 찾을 수 없습니다. 회차를 다시 조회해 주세요.',
+  ITEM_NOT_ASSIGNABLE: '편성할 수 없는 물품이 있습니다. 현재 단계를 확인해 주세요.',
   ITEM_NOT_FOUND: '출품물을 찾을 수 없습니다. 목록을 다시 확인해 주세요.',
   ITEM_NOT_PENDING_REVIEW: '이미 검수가 끝난 출품물입니다. 최신 상태를 확인해 주세요.',
 };
@@ -33,14 +36,14 @@ const fieldMessages: Record<string, string> = {
 export interface FieldError { field: string; reason: string }
 
 export class ApiRequestError extends Error {
-  constructor(readonly code: string, message: string, readonly fields: FieldError[] = []) {
+  constructor(readonly code: string, message: string, readonly fields: FieldError[] = [], readonly items: ItemStage[] = [], readonly itemIds: number[] = []) {
     super(message);
     this.name = 'ApiRequestError';
   }
 }
 
-export function responseError(data: { error: { code: string; message: string; fields?: FieldError[] } }) {
-  return new ApiRequestError(data.error.code, data.error.message, data.error.fields ?? []);
+export function responseError(data: { error: { code: string; message: string; fields?: FieldError[]; items?: ItemStage[]; itemIds?: number[] } }) {
+  return new ApiRequestError(data.error.code, data.error.message, data.error.fields ?? [], data.error.items ?? [], data.error.itemIds ?? []);
 }
 
 export function authFieldErrors(error: unknown): Record<string, string> {
@@ -118,4 +121,17 @@ export function sessionFieldErrors(fields: FieldError[]): Record<string, string>
     field === 'scheduledStartAt' ? reason === 'REQUIRED' ? '예정 시작 시각을 입력해 주세요.' : '올바른 현지 시각을 밀리초 단위로 입력해 주세요.' :
     reason === 'REQUIRED' ? '시간 값을 입력해 주세요.' : '시간 값은 1,000~60,000ms의 정수입니다.',
   ]));
+}
+
+const lineupStageLabels: Record<ItemStage['stage'], string> = {
+  PENDING_REVIEW: '검수 대기', REJECTED: '반려', APPROVED: '승인됨 · 편성 대기',
+  SCHEDULED: '편성됨', ON_AUCTION: '경매 중', SOLD: '낙찰', UNSOLD: '유찰',
+};
+export function lineupErrorDetails(error: unknown, names: Record<number, string>): string[] {
+  if (!(error instanceof ApiRequestError)) return [];
+  return [
+    ...error.items.map(item => `${names[item.itemId] ?? `물품 #${item.itemId}`}: ${lineupStageLabels[item.stage]}`),
+    ...error.itemIds.map(id => `${names[id] ?? `물품 #${id}`}: 찾을 수 없는 물품`),
+    ...error.fields.map(field => field.reason === 'DUPLICATE' ? '같은 물품을 두 번 넣을 수 없습니다.' : '선택한 물품을 확인해 주세요.'),
+  ];
 }

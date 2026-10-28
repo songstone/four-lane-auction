@@ -27,7 +27,7 @@ export function MyItemsPage() {
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4"><div>
       <p className="text-sm font-semibold text-brand">판매자 출품</p><h1 className="mt-2 text-3xl font-bold">내 출품 목록</h1>
       <p className="mt-3 text-sm text-muted">등록한 물품의 검수와 진행 단계를 확인하세요.</p>
-    </div><a href="#/items/new" className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-surface hover:bg-brand-hover">출품 등록</a></div>
+    </div><div className="flex flex-wrap gap-3"><Button variant="secondary" disabled={query.isFetching} onClick={() => { void query.refetch(); }}>목록 새로고침</Button><a href="#/items/new" className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-surface hover:bg-brand-hover">출품 등록</a></div></div>
     {query.isPending ? <Card><Spinner label="내 출품을 불러오는 중" /></Card> : query.isError ? <Card>
       <p role="alert" className="text-danger">{apiErrorMessage(query.error)}</p><Button variant="secondary" className="mt-4" onClick={() => { void query.refetch(); }}>다시 조회</Button>
     </Card> : items.length === 0 ? <Card><EmptyState title="등록한 출품물이 없습니다" description="첫 물품을 등록하고 경매를 준비해 보세요."
@@ -37,7 +37,12 @@ export function MyItemsPage() {
           <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${item.stage === 'REJECTED' ? 'bg-danger-soft text-danger' : item.stage === 'APPROVED' ? 'bg-success-soft text-success' : 'bg-brand-soft text-brand'}`}>{stages[item.stage]}</span>
           <h2 className="mt-2 break-words text-lg font-semibold">{item.name}</h2>
           <p className="mt-2 text-sm">시작가 <span className="font-semibold">{item.startPrice.toLocaleString('ko-KR')}원</span></p>
-          {item.stage === 'REJECTED' && item.rejectReason && <p className="mt-2 break-words text-sm text-danger">반려 사유: {item.rejectReason}</p>}
+          {item.currentLot && <div className="mt-2 text-sm text-muted">
+            <p>회차 #{item.currentLot.sessionId} · 레인 {item.currentLot.laneNo} · {item.currentLot.seqNo}번째</p>
+            <p><time dateTime={item.currentLot.scheduledStartAt}>{new Date(item.currentLot.scheduledStartAt).toLocaleString('ko-KR', { hour12: false })}</time> 예정</p>
+            {item.currentLot.finalPrice !== null && <p>최종가 {item.currentLot.finalPrice.toLocaleString('ko-KR')}원</p>}
+          </div>}
+          {item.stage === 'REJECTED'  && item.rejectReason && <p className="mt-2 break-words text-sm text-danger">반려 사유: {item.rejectReason}</p>}
           <p className="mt-2 text-xs text-muted">등록 <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</time></p>
         </div>
       </Card></li>)}</ul>
