@@ -10,6 +10,7 @@ public class ApiException extends RuntimeException {
     private final ErrorCode errorCode;
     private final LaneReference lane;
     private final List<FieldViolation> fields;
+    private String reviewStatus;
 
     public ApiException(ErrorCode errorCode) {
         this(errorCode, null);
@@ -28,5 +29,10 @@ public class ApiException extends RuntimeException {
 
     public static ApiException invalidRequest(String field, String reason) {
         return new ApiException(ErrorCode.INVALID_REQUEST, null, List.of(new FieldViolation(field, reason)));
+    }
+    public static ApiException itemAlreadyReviewed(String status) {
+        var exception = new ApiException(ErrorCode.ITEM_NOT_PENDING_REVIEW);
+        exception.reviewStatus = status;
+        return exception;
     }
 }

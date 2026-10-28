@@ -10,16 +10,20 @@ public record ApiErrorResponse(@Schema(requiredMode = Schema.RequiredMode.REQUIR
     }
 
     public static ApiErrorResponse of(ErrorCode code, LaneReference lane, List<FieldViolation> fields) {
+        return of(code, lane, fields, null);
+    }
+    public static ApiErrorResponse of(ErrorCode code, LaneReference lane, List<FieldViolation> fields, String reviewStatus) {
         return new ApiErrorResponse(new ErrorDetail(
                 code.name(), code.getMessage(), lane,
-                code.getStatus().value() == 400 ? List.copyOf(fields) : null));
+                code.getStatus().value() == 400 ? List.copyOf(fields) : null, reviewStatus));
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ErrorDetail(
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String code,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String message,
-            LaneReference lane, List<FieldViolation> fields) {}
+            LaneReference lane, List<FieldViolation> fields,
+            @Schema(allowableValues = {"PENDING_REVIEW", "APPROVED", "REJECTED"}) String reviewStatus) {}
 
     public record LaneReference(
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String epoch,

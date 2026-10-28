@@ -14,6 +14,7 @@ public class SessionLane {
     private Long id;
     @Column(name = "session_id", nullable = false)
     private Long sessionId;
+    @Column(name = "lane_no", nullable = false, columnDefinition = "TINYINT") private int laneNo;
 
     protected SessionLane() {}
 }

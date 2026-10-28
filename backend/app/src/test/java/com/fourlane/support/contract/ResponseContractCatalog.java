@@ -10,15 +10,18 @@ import tools.jackson.databind.*;
 public final class ResponseContractCatalog {
     @FunctionalInterface public interface RestCall { MvcResult execute() throws Exception; }
     @FunctionalInterface public interface EventCapture { JsonNode receive() throws Exception; }
-    record RestCase(String method, String path, String audience, int status, boolean binary, RestCall call) {}
+    record RestCase(String method, String path, String audience, int status, boolean binary, Long adminReserve, RestCall call) {}
     record EventCase(String type, String audience, EventCapture capture) {}
     private final List<RestCase> rest = new ArrayList<>();
     private final List<EventCase> events = new ArrayList<>();
     public void rest(String method, String path, String audience, int status, RestCall call) {
-        rest.add(new RestCase(method, path, audience, status, false, call));
+        rest.add(new RestCase(method, path, audience, status, false, null, call));
     }
     public void binary(String method, String path, String audience, RestCall call) {
-        rest.add(new RestCase(method, path, audience, 200, true, call));
+        rest.add(new RestCase(method, path, audience, 200, true, null, call));
+    }
+    public void adminItemDetail(long expectedReserve, RestCall call) {
+        rest.add(new RestCase("GET", "/api/admin/items/{itemId}", "ADMIN", 200, false, expectedReserve, call));
     }
     public void event(String type, String audience, EventCapture actualCapture) { events.add(new EventCase(type, audience, actualCapture)); }
     public void verifyRestCoverage(RequestMappingHandlerMapping mappings) {
@@ -44,7 +47,9 @@ public final class ResponseContractCatalog {
                 assertThat(response.getHeader("X-Content-Type-Options")).isEqualTo("nosniff");
             } else if (response.getContentAsByteArray().length > 0) {
                 assertThat(response.getContentType()).startsWith("application/json");
-                ReservePriceAssertions.assertHidden(json.readTree(response.getContentAsString()), markers);
+                var actual = json.readTree(response.getContentAsString());
+                if (entry.adminReserve() == null) ReservePriceAssertions.assertHidden(actual, markers);
+                else ReservePriceAssertions.assertAdminItemDetail(actual, entry.adminReserve(), markers);
             }
         }
         for (var entry : events) ReservePriceAssertions.assertHidden(entry.capture().receive(), markers);

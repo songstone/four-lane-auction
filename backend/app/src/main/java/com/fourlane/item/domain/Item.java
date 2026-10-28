@@ -34,4 +34,14 @@ public class Item {
     public String name() { return name; }
     public ItemReviewStatus reviewStatus() { return reviewStatus; }
     public Instant createdAt() { return createdAt; }
+    public Instant reviewedAt() { return reviewedAt; }
+    public void approve(Instant now) { review(ItemReviewStatus.APPROVED, null, now); }
+    public void reject(String reason, Instant now) { review(ItemReviewStatus.REJECTED, reason, now); }
+    private void review(ItemReviewStatus result, String reason, Instant now) {
+        if (reviewStatus != ItemReviewStatus.PENDING_REVIEW) throw new IllegalStateException("Item already reviewed");
+        reviewStatus = result;
+        rejectReason = reason;
+        reviewedAt = now;
+        updatedAt = now;
+    }
 }
