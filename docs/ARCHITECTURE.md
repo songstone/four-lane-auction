@@ -389,13 +389,14 @@ erDiagram
 | `V3__bid_policy.sql` | 호가 정책과 기본 정책 v1 시드 | 2주차 |
 | `V4__auction.sql` | `auction_session`, `lane`, `lot`, `lane_transition` | 2~3주차 |
 | `V5__member_warning.sql` (실제 적용, M1-01) | `member_warning`. trade FK는 M3-07에서 추가 | M1-01 |
+| `V6__bid_policy_version_counter.sql` (M1-05 승인) | 정책 등록 전용 singleton 카운터. 기존 최대 버전으로 초기화 | M1-05 |
 | `V5__bid.sql` (초기 계획 번호, 실제 번호 아님) | `bid`, `idempotency_record` | 4주차 |
 | `V6__audit_log.sql` (초기 계획 번호) | `audit_log` (S-03) | 5주차 |
 | `V7__trade.sql` (초기 계획 번호) | `trade`, `payment`, 기존 `member_warning`에 trade FK 추가 | 6주차 |
 | `V8__notification.sql` (초기 계획 번호) | `notification` (S-01) | 6주차 |
 
 - 이미 적용한 파일은 고치지 않는다. 바꿀 것이 생기면 새 버전 파일로 낸다.
-- 실제 적용은 V1~V5다. 이후 파일은 예약하지 않고 적용 순서대로 V6부터 매긴다 (ADR-002, ADR-006). 아래 SQL 예시의 초기 계획 번호는 그대로 실제 파일명으로 쓰지 않는다.
+- M1-05에서 V1~V5 뒤에 전용 카운터 V6을 추가한다. 이후 파일은 예약하지 않고 적용 순서대로 V7부터 매긴다 (ADR-002, ADR-010). 아래 SQL 예시의 초기 계획 번호는 그대로 실제 파일명으로 쓰지 않는다.
 - M1-01 승인: ADMIN은 기본 비활성 `admin-seed` 프로필의 Java 시드로 만든다. 환경변수 이메일·BCrypt 해시가 필수이며 기존 USER 승격과 기존 ADMIN 해시 덮어쓰기는 금지한다 (ADR-006).
 - **ADMIN 계정**은 시드로만 만든다 (AC-01-4). 비밀번호 해시를 저장소에 커밋하지 않도록 환경 값(이메일, 비밀번호 해시)을 받아 넣는다. 개발은 `local,admin-seed`, 운영은 `prod,admin-seed`를 명시 실행하고 정상 앱에는 시드 프로필을 켜지 않는다.
 - 시연·부하 테스트용 대량 데이터(회원, 출품물)는 마이그레이션에 넣지 않는다 [OQ-27].
@@ -521,6 +522,8 @@ VALUES (1, 0, 1000),
 
 - 정책 버전 행은 추가만 하고 고치지 않는다. 그래서 회차가 `bid_policy_id`로 버전을 가리키는 것만으로 스냅샷 고정이 된다 (M-08, AC-08-2).
 - 새 버전에는 `min_price = 0`인 구간이 반드시 있어야 한다. 애플리케이션이 등록할 때 검증한다.
+
+M1-05 승인: 전용 `bid_policy_version_counter`의 `id=1` 행을 `PESSIMISTIC_WRITE`로 잠그고 Clock을 한 번 읽는다. 카운터 증가·새 정책·모든 구간 INSERT를 application의 한 트랜잭션으로 커밋한다. 정책·구간은 수정·삭제하지 않으며, 카운터만 변경 가능하다. V6은 기존 정책의 MAX(version)으로 초기화한다. 상세 대안과 실패 경계는 [ADR-010](adr/ADR-010-M1-05-bid-policy.md)이다. 정책 수치 상한은 PRD OQ-56·API 7.4를 따른다.
 
 #### V4__auction.sql
 
@@ -1711,6 +1714,8 @@ PRD에 없어서 넣지 않은 보안 기능(로그인 시도 제한, 이미지 
 ---
 
 ## 부록 A. 미결 과제와 이 문서의 잠정안
+
+M1-05 정책 등록은 전용 카운터 PK 비관적 락으로 버전을 배정한다 (사용자 승인, ADR-010). 정책·구간 불변 규칙과 별도의 카운터 한 행만 수정한다. CH-04 입찰 후보를 선택한 것이 아니다.
 
 M1-04 검수는 Item PK 비관적 락으로 승인·반려를 직렬화한다 (결정됨, ADR-009). ADMIN 상세 최저가 필드만 응답 계약 검사에서 좁게 허용한다. CH-04 입찰 후보와 별개의 결정이다.
 
