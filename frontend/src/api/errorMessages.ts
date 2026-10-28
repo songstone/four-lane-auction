@@ -15,7 +15,7 @@ const messages: Record<string, string> = {
   UNSUPPORTED_IMAGE_TYPE: 'JPEG, PNG, WebP 이미지 파일을 선택해 주세요.',
   IMAGE_TOO_LARGE: '이미지는 장당 10MB, 전체 요청은 101MB까지 등록할 수 있습니다.',
   IMAGE_NOT_FOUND: '이미지를 찾을 수 없습니다.',
-  AUTH_SESSION_CHANGED: '로그인 계정이 바뀌었습니다. 내 출품 목록을 확인해 주세요.',
+  AUTH_SESSION_CHANGED: '로그인 계정이 바뀌었습니다. 현재 계정으로 다시 확인해 주세요.',
   ITEM_NOT_FOUND: '출품물을 찾을 수 없습니다. 목록을 다시 확인해 주세요.',
   ITEM_NOT_PENDING_REVIEW: '이미 검수가 끝난 출품물입니다. 최신 상태를 확인해 주세요.',
 };
@@ -94,4 +94,16 @@ export function reviewFieldError(error: unknown): string | null {
   if (!(error instanceof ApiRequestError)) return null;
   const field = error.fields.find(field => field.field === 'reason');
   return field ? field.reason === 'TOO_LONG' ? '반려 사유는 500자까지 입력할 수 있습니다.' : '반려 사유를 입력해 주세요.' : null;
+}
+
+export function policyFieldErrors(fields: FieldError[]): Record<string, string> {
+  return Object.fromEntries(fields.map(({ field, reason }) => {
+    const isMin = field.endsWith('.minPrice');
+    const message = reason === 'REQUIRED' ? (isMin ? '구간 하한을 입력해 주세요.' : field.endsWith('.increment') ? '호가 단위를 입력해 주세요.' : '구간을 1개 이상 입력해 주세요.') :
+      reason === 'DUPLICATE' ? '같은 구간 하한을 중복해서 사용할 수 없습니다.' :
+      reason === 'NOT_MULTIPLE_OF_1000' ? '호가 단위는 1,000원의 배수로 입력해 주세요.' :
+      reason === 'OUT_OF_RANGE' ? (field === 'tiers[0].minPrice' ? '첫 구간의 하한은 0원입니다.' : '허용 범위의 정수를 입력해 주세요. 최대 9,007,199,254,740,991원입니다.') :
+      isMin ? '원 단위 정수를 입력하고 구간 하한을 오름차순으로 배치해 주세요.' : '원 단위 정수를 입력해 주세요.';
+    return [field, message];
+  }));
 }

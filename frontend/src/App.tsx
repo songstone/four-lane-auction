@@ -10,6 +10,7 @@ import { ItemRegistrationPage } from './pages/ItemRegistrationPage';
 import { MyItemsPage } from './pages/MyItemsPage';
 import { RequireAdmin } from './features/auth/RequireAdmin';
 import { AdminItemReviewPage } from './pages/AdminItemReviewPage';
+import { AdminBidPolicyPage } from './pages/AdminBidPolicyPage';
 
 function subscribeRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -26,6 +27,7 @@ export function App() {
     url.pathname === '/items/new' ? <RequireUser returnTo="/items/new"><ItemRegistrationPage /></RequireUser> :
     url.pathname === '/me/items' ? <RequireUser returnTo="/me/items"><MyItemsPage /></RequireUser> :
     url.pathname === '/admin/items' ? <RequireAdmin><AdminItemReviewPage /></RequireAdmin> :
+    url.pathname === '/admin/bid-policies' ? <RequireAdmin returnTo="/admin/bid-policies"><AdminBidPolicyPage /></RequireAdmin> :
     url.pathname === '/me' ? <AccountPage /> : <HomePage />;
   return <><AuthenticatedRealtimeConnection /><AuthHeader />{page}</>;
 }
