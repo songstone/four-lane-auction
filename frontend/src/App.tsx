@@ -5,6 +5,9 @@ import { SignupPage } from './pages/SignupPage';
 import { AccountPage } from './pages/AccountPage';
 import { AuthHeader } from './components/AuthHeader';
 import { AuthenticatedRealtimeConnection } from './realtime/AuthenticatedRealtimeConnection';
+import { RequireUser } from './features/auth/RequireUser';
+import { ItemRegistrationPage } from './pages/ItemRegistrationPage';
+import { MyItemsPage } from './pages/MyItemsPage';
 
 function subscribeRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -18,6 +21,8 @@ export function App() {
   const returnTo = url.searchParams.get('returnTo');
   const page = url.pathname === '/login' ? <LoginPage returnTo={returnTo} /> :
     url.pathname === '/signup' ? <SignupPage returnTo={returnTo} /> :
+    url.pathname === '/items/new' ? <RequireUser returnTo="/items/new"><ItemRegistrationPage /></RequireUser> :
+    url.pathname === '/me/items' ? <RequireUser returnTo="/me/items"><MyItemsPage /></RequireUser> :
     url.pathname === '/me' ? <AccountPage /> : <HomePage />;
   return <><AuthenticatedRealtimeConnection /><AuthHeader />{page}</>;
 }

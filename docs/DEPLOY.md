@@ -1,5 +1,9 @@
 # 첫 배포 절차 (M0-05)
 
+M1-03 이미지 저장 추가 (2026-10-28): prod Compose는 app의 `ITEM_IMAGE_STORAGE_ROOT=/app/data/images`와 `item-images` named volume을 사용한다. 이미지의 디렉터리는 uid/gid 10001이 쓸 수 있게 이미지 빌드 시 생성한다. app 컨테이너를 교체해도 같은 Compose 프로젝트의 볼륨을 재사용해야 한다. `down -v`나 볼륨 삭제는 이미지와 DB 데이터를 잃게 하므로 배포·복구 명령으로 쓰지 않는다. DB 백업만으로 이미지가 복구되지는 않는다.
+
+local bootRun 기본 저장 위치는 backend의 `.local-data/images`이고 `ITEM_IMAGE_STORAGE_ROOT`로 바꿀 수 있다. 이 디렉터리는 Git·Docker build context에서 제외한다. 자동 고아 파일 정리는 없다. DB 커밋 결과가 불명확하거나 앱이 파일 저장 뒤 종료되면 파일이 남을 수 있으므로, 앱을 정지한 뒤 `item_image.storage_key`와 파일 목록을 비교하고 DB 연결 상태·완료된 트랜잭션을 확인해 고아 파일만 정리한다. 실행 중 파일·DB를 비교해 즉시 삭제하면 등록 중인 파일을 지울 수 있다. 실제 서버 배포·백업 복원 검증의 완료를 뜻하지 않는다. 결정은 [ADR-008](adr/ADR-008-M1-03-item-registration.md), 실행 증거는 PROGRESS M1-03에 남긴다.
+
 이 문서는 **이미지 태그 하나를 골라 수동 배포**하는 절차다. 현재 세션에서는 이미지·서버 compose·이 문서와 로컬 검증까지만 준비한다. AWS 서버에서 실행한 증거는 아직 없으며, M0-05 전체 완료는 실제 배포 검증 뒤 판정한다. 실행 현황은 [PROGRESS](PROGRESS.md), 결정은 [ADR-005](adr/ADR-005-M0-05-first-deploy.md)가 원본이다.
 
 ## 1. 배포 단위와 준비

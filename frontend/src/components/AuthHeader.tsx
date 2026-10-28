@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { ApiRequestError, apiErrorMessage } from '../api/errorMessages';
 import { useAuth } from '../features/auth/useAuth';
 import { bootstrap, signOut } from '../features/auth/authStore';
-import { loginHref, navigate } from '../features/auth/navigation';
+import { loginHref, navigate, safeReturnTo } from '../features/auth/navigation';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { Spinner } from './ui/Spinner';
@@ -10,7 +10,7 @@ import { Spinner } from './ui/Spinner';
 export function AuthHeader() {
   const auth = useAuth();
   const logout = useMutation({ mutationFn: signOut });
-  const returnTo = window.location.hash.startsWith('#/me') ? '/me' : '/';
+  const returnTo = safeReturnTo(window.location.hash.slice(1).split('?')[0] ?? null);
   const logoutAction = () => { navigate('/'); logout.mutate(); };
   return <div className="border-b border-line bg-surface">
     <nav aria-label="계정 메뉴" className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-3">
@@ -19,6 +19,8 @@ export function AuthHeader() {
         {auth.status === 'loading' ? <Spinner label="로그인 확인 중" /> : auth.member ? <>
           <span>{auth.member.nickname}님</span>
           <Badge>{auth.member.role === 'ADMIN' ? '운영자' : '일반 회원'}</Badge>
+          {auth.member.role === 'USER' && <><a href="#/items/new" className="text-sm text-brand">출품 등록</a>
+            <a href="#/me/items" className="text-sm text-brand">내 출품 목록</a></>}
           <a href="#/me" className="text-sm text-brand">{auth.member.role === 'ADMIN' ? '운영자 계정' : '내 정보'}</a>
           <Button variant="secondary" disabled={logout.isPending} onClick={logoutAction}>로그아웃</Button>
         </> : <>

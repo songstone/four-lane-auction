@@ -12,6 +12,10 @@ const messages: Record<string, string> = {
   SUBSCRIPTION_DENIED: '실시간 구독이 거절되었습니다. 새로고침해 주세요.',
   SEND_DENIED: '허용하지 않는 실시간 요청입니다. 새로고침해 주세요.',
   FRAME_DENIED: '실시간 연결 요청이 거절되었습니다. 새로고침해 주세요.',
+  UNSUPPORTED_IMAGE_TYPE: 'JPEG, PNG, WebP 이미지 파일을 선택해 주세요.',
+  IMAGE_TOO_LARGE: '이미지는 장당 10MB, 전체 요청은 101MB까지 등록할 수 있습니다.',
+  IMAGE_NOT_FOUND: '이미지를 찾을 수 없습니다.',
+  AUTH_SESSION_CHANGED: '로그인 계정이 바뀌었습니다. 내 출품 목록을 확인해 주세요.',
 };
 
 const fieldMessages: Record<string, string> = {
@@ -55,4 +59,25 @@ export function apiErrorMessage(error: unknown): string {
     return messages[error.code] ?? error.message;
   }
   return '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+}
+
+const itemFieldMessages: Record<string, Record<string, string>> = {
+  name: { REQUIRED: '물품 이름을 입력해 주세요.', TOO_LONG: '이름은 100자까지 입력할 수 있습니다.' },
+  description: { TOO_LONG: '설명은 2,000자까지 입력할 수 있습니다.' },
+  startPrice: {
+    REQUIRED: '시작가를 입력해 주세요.', INVALID_FORMAT: '원 단위 정수를 입력해 주세요.',
+    OUT_OF_RANGE: '시작가는 1,000원 이상 10억 원 이하입니다.', NOT_MULTIPLE_OF_1000: '시작가는 1,000원 단위로 입력해 주세요.',
+  },
+  reservePrice: {
+    INVALID_FORMAT: '원 단위 정수를 입력해 주세요.', OUT_OF_RANGE: '최저 낙찰가는 1,000원 이상 10억 원 이하입니다.',
+    NOT_MULTIPLE_OF_1000: '최저 낙찰가는 1,000원 단위로 입력해 주세요.', LESS_THAN_START_PRICE: '최저 낙찰가는 시작가 이상이어야 합니다.',
+  },
+  images: {
+    REQUIRED: '이미지를 1장 이상 선택해 주세요.', TOO_MANY: '이미지는 최대 10장까지 선택할 수 있습니다.',
+    OUT_OF_RANGE: '이미지는 장당 10MB 이하로 선택해 주세요.', INVALID_FORMAT: 'JPEG, PNG, WebP 이미지 파일을 선택해 주세요.',
+  },
+};
+
+export function itemFieldErrors(fields: FieldError[]): Record<string, string> {
+  return Object.fromEntries(fields.map(({ field, reason }) => [field, itemFieldMessages[field]?.[reason] ?? '입력값을 확인해 주세요.']));
 }

@@ -41,6 +41,7 @@ class SchemaAndTimeIntegrationTest extends MySqlIntegrationTest {
     @TestConfiguration(proxyBeanMethods = false)
     @EntityScan(basePackageClasses = {MemberTimeProbe.class,
             com.fourlane.member.domain.Member.class, com.fourlane.auth.domain.RefreshToken.class,
+            com.fourlane.item.domain.Item.class,
             com.fourlane.auction.session.domain.AuctionSession.class})
     static class PersistenceProbes {
     }

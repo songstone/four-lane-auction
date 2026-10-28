@@ -7,12 +7,102 @@
 import type {
   ApiErrorResponse,
   AuthResponse,
+  ItemRegistrationRequest,
+  ItemRegistrationResponse,
+  ListMyItemsParams,
   ListSessionsParams,
   LoginRequest,
   MemberResponse,
+  MyItemListResponse,
   SessionListResponse,
   SignupRequest
 } from './models';
+
+export type registerItemResponse201 = {
+  data: ItemRegistrationResponse
+  status: 201
+}
+
+export type registerItemResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type registerItemResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type registerItemResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type registerItemResponse413 = {
+  data: ApiErrorResponse
+  status: 413
+}
+
+export type registerItemResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type registerItemResponseSuccess = (registerItemResponse201) & {
+  headers: Headers;
+};
+export type registerItemResponseError = (registerItemResponse400 | registerItemResponse401 | registerItemResponse403 | registerItemResponse413 | registerItemResponse500) & {
+  headers: Headers;
+};
+
+export type registerItemResponse = (registerItemResponseSuccess | registerItemResponseError)
+
+export const getRegisterItemUrl = () => {
+
+
+
+
+  return `/api/items`
+}
+
+/**
+ * @summary 출품 등록
+ */
+export const registerItem = async (itemRegistrationRequest?: ItemRegistrationRequest, options?: RequestInit): Promise<registerItemResponse> => {
+    const formData = new FormData();
+if(itemRegistrationRequest?.name !== undefined) {
+ formData.append(`name`, itemRegistrationRequest.name);
+ }
+if(itemRegistrationRequest?.description !== undefined) {
+ formData.append(`description`, itemRegistrationRequest.description);
+ }
+if(itemRegistrationRequest?.startPrice !== undefined) {
+ formData.append(`startPrice`, itemRegistrationRequest.startPrice);
+ }
+if(itemRegistrationRequest?.reservePrice !== undefined) {
+ formData.append(`reservePrice`, itemRegistrationRequest.reservePrice);
+ }
+if(itemRegistrationRequest?.images !== undefined) {
+ itemRegistrationRequest?.images.forEach(value => formData.append(`images`, value));
+ }
+
+  const res = await fetch(getRegisterItemUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: registerItemResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as registerItemResponse
+}
+
+
 
 export type signupResponse201 = {
   data: MemberResponse
@@ -380,4 +470,151 @@ export const getMe = async ( options?: RequestInit): Promise<getMeResponse> => {
 
   const data: getMeResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getMeResponse
+}
+
+
+
+export type listMyItemsResponse200 = {
+  data: MyItemListResponse
+  status: 200
+}
+
+export type listMyItemsResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type listMyItemsResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type listMyItemsResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type listMyItemsResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type listMyItemsResponseSuccess = (listMyItemsResponse200) & {
+  headers: Headers;
+};
+export type listMyItemsResponseError = (listMyItemsResponse400 | listMyItemsResponse401 | listMyItemsResponse403 | listMyItemsResponse500) & {
+  headers: Headers;
+};
+
+export type listMyItemsResponse = (listMyItemsResponseSuccess | listMyItemsResponseError)
+
+export const getListMyItemsUrl = (params?: ListMyItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/me/items?${stringifiedParams}` : `/api/me/items`
+}
+
+/**
+ * @summary 내 출품 목록
+ */
+export const listMyItems = async (params?: ListMyItemsParams, options?: RequestInit): Promise<listMyItemsResponse> => {
+
+  const res = await fetch(getListMyItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: listMyItemsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as listMyItemsResponse
+}
+
+
+
+export type getImageResponse200ImageJpeg = {
+  data: Blob
+  status: 200
+}
+
+export type getImageResponse200ImagePng = {
+  data: Blob
+  status: 200
+}
+
+export type getImageResponse200ImageWebp = {
+  data: Blob
+  status: 200
+}
+
+export type getImageResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type getImageResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type getImageResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type getImageResponseSuccess = (getImageResponse200ImageJpeg | getImageResponse200ImagePng | getImageResponse200ImageWebp) & {
+  headers: Headers;
+};
+export type getImageResponseError = (getImageResponse401 | getImageResponse404 | getImageResponse500) & {
+  headers: Headers;
+};
+
+export const getGetImageUrl = (storageKey: string,) => {
+
+
+
+
+  return `/api/images/${storageKey}`
+}
+
+/**
+ * @summary 출품 이미지
+ */
+export const getImage = async (storageKey: string, options?: RequestInit): Promise<getImageResponseSuccess> => {
+
+  const res = await fetch(getGetImageUrl(storageKey),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  if (!res.ok) {
+    const errorBody = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const err: globalThis.Error & {info?: getImageResponseError['data'], status?: number} = new globalThis.Error();
+    const data : getImageResponseError['data'] = errorBody ? JSON.parse(errorBody) : {}
+    err.info = data;
+    err.status = res.status;
+    throw err;
+  }
+  const body = [204, 205, 304].includes(res.status) ? null : await res.blob();
+  const data: getImageResponseSuccess['data'] = body as getImageResponseSuccess['data']
+  return { data, status: res.status, headers: res.headers } as getImageResponseSuccess
 }
