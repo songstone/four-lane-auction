@@ -15,7 +15,12 @@ export default defineConfig({
       client: 'fetch',
       baseUrl: '',
       clean: true,
-      override: { fetch: { includeHttpResponseReturnType: true } },
+      override: {
+        fetch: { includeHttpResponseReturnType: true },
+        // Orval's blob decoder otherwise reads JSON errors as Blob too.
+        // Only this binary operation throws with { status, info: ApiErrorResponse }.
+        operations: { getImage: { fetch: { forceSuccessResponse: true } } },
+      },
     },
   },
 });
