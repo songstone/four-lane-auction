@@ -22,7 +22,7 @@ app 모듈: com.fourlane
 
 ## 설계 규칙
 - 엔티티와 엔진 상태를 응답·이벤트로 직접 직렬화하지 않는다. 요청·응답 DTO는 record로 api 층에서만 만든다. 공개 DTO·이벤트·스냅샷에는 최저 낙찰가 필드가 없다
-- 레인·Lot 상태 전이, 입찰 조건 5~9, 마감 연장·판정은 engine의 LaneStateMachine에 둔다. 상태 머신 표현 방식(CHALLENGES CH-02 (가))은 미결이다
+- 레인·Lot 상태 전이, 입찰 조건 5~9, 마감 연장·판정은 engine의 LaneStateMachine에 둔다. enum 단계·전이 메서드와 sealed 명령·이벤트를 사용하고, 순수 판단이 할 일을 반환한다 (M1-09 승인, ADR-014)
 - 엔티티에 @Setter를 쓰지 않는다. 상태 변경은 의미 있는 이름의 메서드로 한다
 - 레인 전이의 영속화는 JpaLaneStore가 맡는다. lot 쓰기는 조건부 UPDATE(status·bid_count 조건)로 하고, 영향받은 행이 1인지 확인한다
 - 트랜잭션 경계
