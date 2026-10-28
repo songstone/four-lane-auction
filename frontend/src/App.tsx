@@ -8,6 +8,8 @@ import { AuthenticatedRealtimeConnection } from './realtime/AuthenticatedRealtim
 import { RequireUser } from './features/auth/RequireUser';
 import { ItemRegistrationPage } from './pages/ItemRegistrationPage';
 import { MyItemsPage } from './pages/MyItemsPage';
+import { RequireAdmin } from './features/auth/RequireAdmin';
+import { AdminItemReviewPage } from './pages/AdminItemReviewPage';
 
 function subscribeRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -23,6 +25,7 @@ export function App() {
     url.pathname === '/signup' ? <SignupPage returnTo={returnTo} /> :
     url.pathname === '/items/new' ? <RequireUser returnTo="/items/new"><ItemRegistrationPage /></RequireUser> :
     url.pathname === '/me/items' ? <RequireUser returnTo="/me/items"><MyItemsPage /></RequireUser> :
+    url.pathname === '/admin/items' ? <RequireAdmin><AdminItemReviewPage /></RequireAdmin> :
     url.pathname === '/me' ? <AccountPage /> : <HomePage />;
   return <><AuthenticatedRealtimeConnection /><AuthHeader />{page}</>;
 }
