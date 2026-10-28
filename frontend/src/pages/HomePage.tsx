@@ -10,6 +10,7 @@ import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Spinner } from '../components/ui/Spinner';
 import { useConnectionStatus } from '../realtime/useConnectionStatus';
+import { useAuth } from '../features/auth/useAuth';
 
 const connectionLabels = {
   connecting: '연결 중',
@@ -32,6 +33,8 @@ function SessionEntry({ session, now }: { session: SessionSummary; now: number |
         {now === null ? '시작 시각 확인 중' : Date.parse(session.scheduledStartAt) <= now ? '시작 대기 중' : `시작까지 ${Math.ceil((Date.parse(session.scheduledStartAt) - now) / 1000).toLocaleString('ko-KR')}초`}
       </p>}
       <p className="mt-2 text-sm text-muted">레인 {session.laneCount}개 · 편성 물품 {session.lotCount}개</p>
+      {session.status === SessionStatus.SCHEDULED && <a href={`#/sessions/${session.sessionId}`}
+        className="mt-3 inline-block text-sm font-semibold text-brand hover:underline">예정 회차 관전</a>}
     </li>
   );
 }
@@ -90,6 +93,8 @@ export function HomePage() {
   const restFailed = queries.some((query) => query.isError);
   const restConnected = !restFailed && queries.every((query) => query.data !== undefined);
   const ws = useConnectionStatus();
+  const { member } = useAuth();
+  const keepsConnection = member?.role === 'USER';
   const serverTime = queries.flatMap((query) => query.data?.pages.map((page) => page.serverTime) ?? [])
     .sort().at(-1);
   return (
@@ -105,11 +110,12 @@ export function HomePage() {
             <Badge data-testid="rest-status" tone={restFailed ? 'danger' : restConnected ? 'success' : 'neutral'}>
               REST {restFailed ? '연결 끊김' : restConnected ? '연결됨' : '연결 중'}
             </Badge>
-            <Badge data-testid="ws-status" title={ws.error
+            <Badge data-testid="ws-status" title={!keepsConnection ? '예정 회차 관전에 들어가면 연결됩니다.' : ws.error
               ? apiErrorMessage(new ApiRequestError(ws.error, '연결 요청이 거절되었습니다.')) : 'STOMP CONNECTED 수신 기준'}
-              tone={ws.status === 'connected' ? 'success' : ws.status === 'connecting' ? 'neutral' : 'danger'}>
-              WebSocket {ws.status === 'connected'
+              tone={!keepsConnection ? 'neutral' : ws.status === 'connected' ? 'success' : ws.status === 'connecting' ? 'neutral' : 'danger'}>
+              {keepsConnection ? <>WebSocket {ws.status === 'connected'
                 ? ws.identity === 'authenticated' ? '인증 연결' : '익명 연결' : connectionLabels[ws.status]}
+              </> : '관전 화면에서 연결'}
             </Badge>
           </div>
         </div>

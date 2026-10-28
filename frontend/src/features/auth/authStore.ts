@@ -21,10 +21,10 @@ let bootstrapped = false;
 export function connectAuthQueryCache(client: QueryClient) {
   onMember = (member) => {
     const previous = client.getQueryData<MemberResponse>(['me']);
-    if (!member || (previous && previous.memberId !== member.memberId)) {
+    if (!member || previous?.memberId !== member.memberId) {
       void client.cancelQueries({ queryKey: ['myItems'] });
       client.removeQueries({ queryKey: ['myItems'] });
-      for (const key of ['adminItems', 'adminItem', 'adminBidPolicies', 'adminSession']) {
+      for (const key of ['adminItems', 'adminItem', 'adminBidPolicies', 'adminSession', 'session', 'lane']) {
         void client.cancelQueries({ queryKey: [key] });
         client.removeQueries({ queryKey: [key] });
       }

@@ -13,6 +13,7 @@ import { MyItemsPage } from './pages/MyItemsPage';
 import { RequireAdmin } from './features/auth/RequireAdmin';
 import { AdminItemReviewPage } from './pages/AdminItemReviewPage';
 import { AdminBidPolicyPage } from './pages/AdminBidPolicyPage';
+import { ScheduledSessionPage } from './pages/ScheduledSessionPage';
 
 function subscribeRoute(listener: () => void) {
   window.addEventListener('hashchange', listener);
@@ -26,8 +27,11 @@ export function App() {
   const returnTo = url.searchParams.get('returnTo');
   const lineup = /^\/admin\/sessions\/([1-9]\d*)\/lineup$/.exec(url.pathname);
   const lineupId = lineup ? Number(lineup[1]) : null;
+  const session = /^\/sessions\/([1-9]\d*)$/.exec(url.pathname);
+  const sessionId = session ? Number(session[1]) : null;
   const page = url.pathname === '/login' ? <LoginPage returnTo={returnTo} /> :
     url.pathname === '/signup' ? <SignupPage returnTo={returnTo} /> :
+    sessionId !== null && Number.isSafeInteger(sessionId) ? <ScheduledSessionPage sessionId={sessionId} /> :
     url.pathname === '/items/new' ? <RequireUser returnTo="/items/new"><ItemRegistrationPage /></RequireUser> :
     url.pathname === '/me/items' ? <RequireUser returnTo="/me/items"><MyItemsPage /></RequireUser> :
     lineupId !== null && Number.isSafeInteger(lineupId) ? <RequireAdmin returnTo={url.pathname}><AdminSessionLineupPage sessionId={lineupId} /></RequireAdmin> :
@@ -35,5 +39,5 @@ export function App() {
     url.pathname === '/admin/items' ? <RequireAdmin><AdminItemReviewPage /></RequireAdmin> :
     url.pathname === '/admin/bid-policies' ? <RequireAdmin returnTo="/admin/bid-policies"><AdminBidPolicyPage /></RequireAdmin> :
     url.pathname === '/me' ? <AccountPage /> : <HomePage />;
-  return <><AuthenticatedRealtimeConnection /><AuthHeader />{page}</>;
+  return <><AuthenticatedRealtimeConnection /><AuthHeader route={url.pathname} />{page}</>;
 }

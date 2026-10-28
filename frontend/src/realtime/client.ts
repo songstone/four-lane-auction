@@ -1,4 +1,4 @@
-import { Client, ReconnectionTimeMode, Versions } from '@stomp/stompjs';
+import { Client, ReconnectionTimeMode, Versions, type IMessage } from '@stomp/stompjs';
 import { bootstrap, forgetSession, refreshSession, requestConnectionAuth, subscribeAuth } from '../features/auth/authStore';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
@@ -7,9 +7,12 @@ interface ConnectionState {
   status: ConnectionStatus;
   identity: 'anonymous' | 'authenticated' | null;
   error: string | null;
+  generation: number;
 }
-let state: ConnectionState = { status: 'connecting', identity: null, error: null };
+let state: ConnectionState = { status: 'disconnected', identity: null, error: null, generation: 0 };
 const listeners = new Set<() => void>();
+const owners = new Set<symbol>();
+let subscriptionId = 0;
 let client: Client | null = null;
 let stopping: Promise<void> | null = null;
 let unsubscribeAuth: (() => void) | null = null;
@@ -18,7 +21,7 @@ let fatal = false;
 
 function publish(status: ConnectionStatus, identity: ConnectionState['identity'] = null, error: string | null = null) {
   if (state.status === status && state.identity === identity && state.error === error) return;
-  state = { status, identity, error };
+  state = { status, identity, error, generation: state.generation + (status === 'connected' ? 1 : 0) };
   listeners.forEach((listener) => listener());
 }
 
@@ -115,7 +118,7 @@ function createClient(): Client {
 }
 
 function reconcile() {
-  if (listeners.size > 0 && !fatal) {
+  if (owners.size > 0 && !fatal) {
     if (client !== null || stopping !== null) return;
     client = createClient();
     client.activate();
@@ -134,21 +137,38 @@ function authChanged() {
   reconcile();
 }
 
-export function subscribeConnection(listener: () => void) {
+/** Observing a badge never opens a connection. Only USER/app or P-03 owns one. */
+export function subscribeConnectionStatus(listener: () => void) {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+export function retainConnection() {
   if (unsubscribeAuth === null) {
     watchedIdentity = requestConnectionAuth().identity;
     unsubscribeAuth = subscribeAuth(authChanged);
   }
-  listeners.add(listener);
+  const owner = Symbol();
+  owners.add(owner);
   reconcile();
   return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) {
+    owners.delete(owner);
+    if (owners.size === 0) {
       unsubscribeAuth?.();
       unsubscribeAuth = null;
       fatal = false;
     }
     reconcile();
+  };
+}
+
+export function subscribeLaneTopics(laneIds: number[], receive: (message: IMessage) => void) {
+  const current = client;
+  if (!current?.connected) return null;
+  const subscriptions = laneIds.map(id => current.subscribe(`/topic/lanes/${id}`, receive,
+    { id: `lane-${id}-${++subscriptionId}` }));
+  return () => {
+    if (client === current && current.connected) subscriptions.forEach(subscription => subscription.unsubscribe());
   };
 }
 
