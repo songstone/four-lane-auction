@@ -4,6 +4,7 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { ErrorDetailReviewStatus } from './errorDetailReviewStatus';
 import type { FieldViolation } from './fieldViolation';
 import type { LaneReference } from './laneReference';
 
@@ -12,4 +13,5 @@ export interface ErrorDetail {
   message: string;
   lane?: LaneReference;
   fields?: FieldViolation[];
+  reviewStatus?: ErrorDetailReviewStatus;
 }
