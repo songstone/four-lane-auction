@@ -34,3 +34,7 @@
 실제 검증·수용 기준·직접 확인 절차·NOT_RUN은 PROGRESS M1-06에 기록한다.
 
 근거: [MySQL 잠금 읽기](https://dev.mysql.com/doc/refman/8.4/en/innodb-locking-reads.html), [소수 초 반올림](https://dev.mysql.com/doc/refman/8.4/en/fractional-seconds.html), [DATETIME 범위](https://dev.mysql.com/doc/refman/8.4/en/datetime.html). 승인한 기본 구조·시간 출처는 ADR-002·003, 실제 결과는 PROGRESS를 따른다.
+
+## M1-07 후속 처리 (2026-10-28)
+
+[ADR-012](ADR-012-M1-07-session-lineup.md): 편성 쓰기는 회차 status=SCHEDULED 조건부 갱신을 맨 먼저 실행하고 기존·요청 Item을 정렬 잠금한다. 실제 편성에서 startable·emptyLaneNos를 조회·표시한다. 회차 행 대기·상태 변경 검사는 통제된 TX로 검증했으며 실제 시작 구현·시작/편성 종합 경합·정책 고정은 M2-02에 남아 있다.
