@@ -1,5 +1,100 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-09 레인 상태 머신 (순수 판단)
+
+- 작업일: 2026-10-28 (Asia/Seoul).
+- 상태: **완료 (M1-09 로컬 수용 기준·아래 실제 실행 증거 기준)**. 전체 backend clean build와 프론트 회귀 검사를 마쳤다. 사용자 승인 범위로 push·dev 대상 PR을 진행하며 원격 CI 결과는 PR·완료 보고에서 구분한다. 머지는 별도 지시가 필요하다.
+- 원본: TASKS 0장·M1-09·9장, PRD M-07·M-10·AC-07-1/3/5/6·AC-09-3(5~9)/6/7·AC-10-4/5·T1/T2/T4·9.7, ARCH 5.3/5.4/5.6·R8/R13, API 5.1·EVENTS 3/5, CH-01~03, ADR-001~013, PROGRESS 후속.
+- 시작 SHA: `40b17b8547b35eda93c310ca4712f6db58397b9f`. fetch 후 dev=origin/dev·clean, 선행 M1-05 PR #8(`569c07d4ae56d899c0b4ec191855ea0acbd02b33`) ancestry 확인 후 `feature/M1-09-lane-state-machine` 생성.
+- 승인: ① CH-01 A2, ② CH-02 A1, ③ CH-03 B, ④ READY 밖 Activate 내부 거절, ⑤ READY/FINISHED Tick 무시 및 파일·검증·커밋 계획. 후속 사용자 메시지로 **push·dev 대상 PR 생성까지 승인**. 머지는 별도 지시가 필요하다.
+- 결정 기록: [ADR-014](adr/ADR-014-M1-09-lane-state-machine.md), PRD OQ-57/58, CHALLENGES 후보 표·ARCH 부록 A. 기존 Tick 안전망·세대·gapEndsAt·입찰 v1은 재결정하지 않았다.
+- 의존성·스키마: 새 외부 의존성 없음. 기존 JUnit 6.0.3 및 파라미터화 테스트 재사용. Flyway 없음, V1~V7 불변, 다음 번호 V8. API·EVENTS·app·frontend 기능 변경 없음.
+- 커밋: `81e785d` 결정, `b1f7800` 경합 RED, `bfa4f42` 판단 구현, `74d4e2b` 전이·시간 테스트, `1abbd84` engine 서울 시간대 검증. 최종 증거·문서 정리는 별도 docs 커밋이다.
+
+### 승인한 구현과 경계
+
+- LaneStateMachine은 불변 상태·sealed 명령·처리 시각으로 새 상태와 할 일을 반환한다. Activate, PlaceBid, CheckDeadline, EndGap, Tick만 구현한다. enum 여섯 단계와 명시적 전이 메서드를 사용한다. Pause/Resume/ForceClose는 만들지 않는다.
+- READY 밖 Activate는 내부 NOT_READY, 빈 편성은 기존 OQ-05에 따른 EMPTY_LINEUP이다. 새 HTTP 오류가 아니다. READY/FINISHED Tick은 무시하며 PAUSED의 모든 타이머도 상태를 바꾸지 않는다.
+- PlaceBid는 조건 5~9 순서를 지킨다. 거절은 입력 경매 상태를 그대로 반환하며 영속화·이벤트·예약 의도가 없다. 마감 뒤에도 Lot은 유효한 CheckDeadline/Tick이 처리하기 전까지 BIDDING일 수 있으나 입찰은 받지 않는다.
+- 타이머는 단계·Lot ID·세대를 먼저 검사한다. 같은 세대의 이른 CheckDeadline은 현재 마감에 재예약한다. 입찰 연장은 세대를 올리거나 예약을 추가하지 않는다. 이른 EndGap은 무시하고 Tick이 누락된 진행을 보완한다. 새 Lot·새 간격은 각 세대를 증가시킨다.
+- 마감 결과는 NO_BID, SOLD, RESERVE_NOT_MET으로 구별한다. 간격은 실제 마감 처리 시각부터 설정하고 마지막 Lot도 전체 간격 뒤에 FINISHED가 된다. 다음 Lot은 간격 처리 시각부터 첫 대기를 받는다. 첫 Lot만 회차 시작의 공통 t0를 사용한다.
+- LaneProcessingTime은 Clock을 한 번 읽고 직전 처리 시각과 max를 계산한다. 처리 메타데이터는 경매 상태와 구분하므로 거절·무시에도 전진한다. 실제 기준값 보관·락·TX 진입점은 M2-01이다. 밀리초 미만 입력은 반올림하지 않고 내부 구성 오류로 드러낸다.
+- PersistChange는 도메인 쓰기 의도이며 이벤트 저장소 구현이 아니다. SOLD의 결과·거래를 같은 TX에서 저장해야 한다는 경계만 전달한다. 실제 bidId·tradeId·epoch·seq·commit 시각은 만들지 않는다. Activate의 첫 Lot은 회차 시작 TX에서 이미 저장되었으므로 중복 영속화 의도를 내지 않는다.
+- 내부 LaneState·LaneEvent는 공개 DTO가 아니다. 최저가·내부 회원 ID·유찰 사유를 그대로 직렬화하면 안 된다. 공개 변환·최저가 노출 계약·실제 상태 이벤트·비컨은 M2 후속이다.
+
+### 단계별 실제 실행 증거
+
+증거는 ignored 로컬 경로 `output/m1-09/`에 보존한다. 공개 PR에는 비밀값이나 이 로컬 경로의 파일을 자동 업로드하지 않는다.
+
+| 단계 | 실제 결과 | 증거 |
+|---|---|---|
+| 선행 RED | 판단 구현 전에 경합 테스트 3건 실제 실행, 실패 3·오류 0·skip 0. 컴파일 성공 후 미구현 판단 진입점의 UnsupportedOperationException으로 실패 | `red/gradle.log`, `red/command.json`, `red/test-results/`, `red/report/`, 커밋 b1f7800 |
+| 최초 GREEN | 같은 경합 테스트를 수정하지 않고 기존 정책 10건+경합 3건 통과 | `engine-green.log`, `green/test-results/`, 커밋 bfa4f42 |
+| 확장 엔진 검증 | 96건(기존 정책 10+신규 86), 실패/오류/skip 0. 두 경합 순서 각 500회는 JUnit 2건 내부의 총 1,000라운드다 | `engine-expanded.log`, 커밋 74d4e2b |
+| 엔진 시간대 | UTC·Asia/Seoul 각각 96건, 실패/skip 0. 실제 테스트 실행 구간 1757.0972ms·1552.3628ms. Gradle 전체 실행시간은 별도이며 콘솔 표시 15초 | `engine-zones.log` |
+| 최종 BE | `clean build --no-build-cache` PASS. 명령 전체 실측 1,074,295ms(Gradle 콘솔 17분 53초), 17태스크 모두 실행. UTC·Seoul 각각 367건(app 271+engine 96), 총 734건, 실패/오류/skip 0. engine 실행 구간 UTC 1444.745ms·Seoul 1331.6347ms. verifyTimeSources 운영 152파일·위반 0, JUnit XML 집계 검증기 PASS | `clean-build.log`, `clean-build-command.json`, `final/test-summary.json`, `final/test-results/`, `final/ci-report-verifier.log` |
+| 프론트 회귀 | lint·typecheck·build PASS. 명령 전체 경과 각각 8416ms·5830ms·4045ms | `frontend-summary.json`, `frontend-lint.log`, `frontend-typecheck.log`, `frontend-build.log` |
+| 모듈·범위 | Gradle engine compileClasspath: No dependencies. JDK jdeps 재귀 분석에서 engine JAR → java.base만. 운영 외부 import·engine 전체 금지 시계/Thread.sleep 검색 0건. 시작 SHA 대비 API·EVENTS·app·frontend diff 없음, git diff --check PASS | `engine-dependencies.log`, `engine-jdeps.log`, `scope-boundary.json` |
+
+CH-01의 5초는 제안 기준이다. 측정한 엔진 테스트 실행 구간과 Gradle 시작·컴파일·전체 app 통합 테스트 시간을 혼동하지 않는다. 성능 부하 목표의 증거가 아니다.
+
+### 수용 기준별 판정
+
+아래 PASS는 M1-09의 **순수 판단 범위**이며 실제 DB·REST·STOMP 결과를 의미하지 않는다.
+
+| 기준 | 결과 | 실제 근거 |
+|---|---|---|
+| AC-07-1 | PASS | LaneLifecycleTest: +15초 NO_BID, +5초 다음 Lot 시작. 19.999초에는 진행하지 않음 |
+| AC-07-3 | PASS | LaneLifecycleTest: SOLD·NO_BID·RESERVE_NOT_MET 모두 마지막 간격 후 FINISHED, 중복 종료 이벤트 없음 |
+| AC-07-5 | PASS | LaneTimingTest: +2초 입찰은 마감 +15초 유지, +8초 입찰은 +18초. 100회 교대 입찰에도 인위적 최대 길이 없음 |
+| AC-07-6 이번 범위 | PASS | FakeClock·FakeScheduler로 시작/입찰/마감/간격/레인 종료를 실제 시간 대기 없이 검증. 자동 회차 시작·집계는 M2 후속 |
+| AC-09-3 조건 5~9 | PASS | LaneBidValidationTest·전이 표: 다중 실패의 우선순위, 거절 시 같은 상태 참조·할 일 없음. 실제 seq 저장/발행은 구현하지 않았으며 이벤트 증가 요구 0을 검증 |
+| AC-09-6 | PASS | 같은 시작가의 다음 Lot이 열린 뒤 이전 lotId 입찰은 LOT_MISMATCH, 다음 Lot 불변 |
+| AC-09-7·첫 입찰 | PASS | 최고 입찰자 재입찰 거절, 50,000원 그대로 입찰 거절, 첫 입찰 60,000원 수락 |
+| AC-10-4 이번 범위 | PASS | LaneDeadlineRaceTest의 두 순서 + LaneConcurrentDispatchTest의 각 500회. 수락 사실과 최종 최고가·최고 입찰자 일치. 실제 DB 이력 대조는 NOT_RUN |
+| AC-10-5 | PASS | 확인을 마감+400ms에 실행하면서 +200ms 입찰 거절. 거절 자체는 마감 전이를 만들지 않음 |
+| R8 경계 | PASS | LaneTimingTest: −1ms 수락, 정각·+1ms 거절. 마감 확인은 정각부터 적용 |
+| 낡은 타이머·E10 | PASS | +8초 입찰→+15초 확인에서 BIDDING→+18초 SOLD. 다른 Lot·낡은/다른 세대는 실제 기한이 지나도 상태·예약 변화 없음. 중복 마감·간격도 재적용 없음 |
+| R13·E9 | PASS | LaneProcessingTimeTest: Clock 1회, 역행 시 max, 거절·무시의 처리 메타데이터도 후속 판단 기준으로 유지 |
+| 전이 표 | PASS | LaneTransitionTableTest: 30칸을 명시한 독립 기대값으로 검증. enum 단계·sealed 명령의 전체 곱과 중복·누락 대조. OQ-57/58 승인 반영 |
+| Spring·JPA 비의존 | PASS | engine 운영 의존성 없음, jdeps java.base, 운영 import 검사. JUnit은 테스트에만 사용 |
+| curl·화면 | NOT_RUN — 대상 없음 | 화면·REST가 없는 순수 엔진 작업. GEN·FE·통합 단계 없음 |
+
+### 직접 확인하는 방법
+
+Windows PowerShell, 저장소 루트에서:
+
+```powershell
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10'
+cd backend
+.\gradlew.bat :engine:test --tests '*LaneDeadlineRaceTest' --rerun-tasks
+.\gradlew.bat :engine:test --tests '*LaneTransitionTableTest' --tests '*LaneConcurrentDispatchTest' --rerun-tasks
+.\gradlew.bat :engine:test :engine:testSeoul --rerun-tasks
+.\gradlew.bat clean build --no-build-cache
+cd ../frontend
+npm run lint
+npm run typecheck
+npm run build
+```
+
+- 엔진 HTML: `backend/engine/build/reports/tests/test/index.html`, 서울: `backend/engine/build/reports/tests/testSeoul/index.html`. 전체 검증 뒤 보고서를 열면 전이 표 30개와 개별 테스트 결과를 확인할 수 있다.
+- RED 재현 코드는 `git show b1f7800:backend/engine/src/test/java/com/fourlane/engine/lane/LaneDeadlineRaceTest.java`, 미구현 판단 골격은 같은 커밋의 main LaneStateMachine.java에 있다. 현재 HEAD의 같은 테스트는 통과한다.
+- 이번 기능을 확인할 화면이나 curl은 없다. 기존 예정 회차 화면을 경매 완주 증거로 사용하지 않는다.
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 순수 판단은 동일한 낡은 상태를 두 호출에 주면 둘 다 수락할 수 있다. 모든 경로가 같은 잠금 아래 최신 상태를 읽고 판단해야 한다. 테스트의 synchronized/latch 하네스는 실제 MySQL 락 증거가 아니다. v1 락 대상·보관 위치는 M2-01에서 정한다.
+- nextState와 PublishEvent·ScheduleTimer는 커밋 성공 뒤에만 반영해야 한다. 먼저 반영하거나 SOLD/거래를 다른 TX에 저장하면 유령 입찰·거래 없는 낙찰이 생긴다. 실패·커밋 결과 미정·복구는 이번 판단 코드가 처리하지 않는다.
+- Clock은 직렬화 뒤 한 번 읽어야 한다. HTTP 수신 시각을 넘기면 락 대기 중 마감된 입찰이 수락될 수 있다. 역행 시 max는 시간을 잠시 멈추게 할 뿐이며 앞으로 점프하는 경우·벽시계와 단조 타이머의 불일치는 OQ-35 미결이다.
+- 타이머는 확인 요청이다. Lot·세대 가드를 시간 판정보다 늦게 하면 낡은 명령이 새 Lot을 닫을 수 있다. 입찰 연장 시 세대만 올리고 예약하지 않으면 유효한 주 타이머를 잃는다. Tick은 실제 실행기가 살아 있어야 안전망이 된다.
+- EndGap의 기준은 gapEndsAt이며 다음 시작 시각은 실제 처리 시각이다. 과거 deadline에 간격을 더하거나 늦은 타이머를 과거 시각으로 실행하면 결과 표시·첫 입찰 대기 시간이 줄어든다.
+- long 금액·세대·입찰 수의 산술 overflow는 예외로 드러내며 입력 상태를 바꾸지 않는다. 사용자에게 보일 입찰 금액 끝단 정책은 ADR-010·OQ-56대로 M2-06 후속이다.
+- M2-01: 실제 DB 락·TX·처리 시각 저장·seq·스냅샷. M2-02: 시작·편성 경합·정책 고정. M2-03/06: DB 마감·거래·타이머·입찰. M2-04/05: 비예정 상세 임시 500 제거·이벤트·진행 중 OQ-22. M3: 정지·재개·강제 종료·복구. OQ-35/38·B-10 등은 새로 정하지 않았다.
+- 전체 clean을 위해 이 checkout의 engine JAR을 사용하던 기존 bootRun 애플리케이션 2개(PID 34524, 31476)를 소유 경로 확인 후 중지했다. 개발 DB·Vite는 중지하지 않았다. 이번에는 bootRun을 재실행하지 않는다.
+- **NOT_RUN:** 실제 DB 입찰/마감 락 경합·거래 원자성·DB 이력 재계산·운영 스케줄러/스레드 장애·STOMP 발행/seq·실제 경매 화면·서버 재시작 복구·부하/성능·TLS/AWS/배포. 기존 app 통합 테스트 회귀 결과가 이 미구현 경로의 증거를 대신하지 않는다.
+
+---
+
 ## M1-08 예정 회차 관전 화면
 
 - 작업일: 2026-10-28 (Asia/Seoul).
