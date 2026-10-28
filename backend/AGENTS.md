@@ -18,7 +18,7 @@ app 모듈: com.fourlane
 ├── notification/  알림함, 개인 큐 전송
 └── audit/         운영자 감사 로그
 도메인 패키지 안: api(컨트롤러·DTO) / application(유스케이스·트랜잭션) / domain(엔티티·리포지토리) / infra(조회 쿼리·외부 어댑터)
-의존: api → application → domain ← infra. 도메인 사이는 auth → member (M1-01 승인, ADR-006), bid → auction, auction → trade·notification·audit, trade → member·notification, realtime → auction.runtime만
+의존: api → application → domain ← infra. 도메인 사이는 auth → member (M1-01 승인, ADR-006), bid → auction, auction.session → item.domain (M1-07 편성 검증용 조회·Item 잠금 포트, Item 쓰기 없음; ADR-012), auction → trade·notification·audit, trade → member·notification, realtime → auction.runtime만
 
 ## 설계 규칙
 - 엔티티와 엔진 상태를 응답·이벤트로 직접 직렬화하지 않는다. 요청·응답 DTO는 record로 api 층에서만 만든다. 공개 DTO·이벤트·스냅샷에는 최저 낙찰가 필드가 없다

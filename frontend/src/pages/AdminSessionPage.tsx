@@ -147,6 +147,7 @@ function SessionEditor({ value, memberId }: { value: AdminSessionResponse; membe
     submitting.current = true; mutation.mutate({ input, identity: requestConnectionAuth().identity });
   }
   return <Card><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">회차 #{id} 설정</h2><Badge>{stateLabels[value.session.status]}</Badge></div>
+    <a href={`#/admin/sessions/${id}/lineup`} className="mt-4 inline-block text-sm font-semibold text-brand">회차 편성 열기</a>
     <p className="mt-3 text-sm text-muted">레인 {value.session.laneCount}개 · {value.emptyLaneNos.length ? '미편성 레인 있음' : value.startable ? '시작 조건 충족' : '모든 레인 편성됨'}</p>
     <div className="mt-3 flex flex-wrap gap-2">{value.lanes.map(lane => <Badge key={lane.laneId}>레인 {lane.laneNo} · 물품 {lane.lots.length}개</Badge>)}</div>
     {!editable && <p role="status" className="mt-4 text-sm text-muted">시작한 회차는 설정을 변경할 수 없습니다.</p>}

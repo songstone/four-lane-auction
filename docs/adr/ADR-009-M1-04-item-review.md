@@ -25,3 +25,7 @@
 실제 실행·수용 기준·NOT_RUN은 PROGRESS M1-04에 기록한다.
 
 근거: [MySQL 잠금 읽기](https://dev.mysql.com/doc/refman/8.4/en/innodb-locking-reads.html), [Spring Data JPA Lock](https://docs.spring.io/spring-data/jpa/reference/jpa/locking.html).
+
+## M1-07 후속 처리 (2026-10-28)
+
+[ADR-012](ADR-012-M1-07-session-lineup.md): 편성 쓰기·OQ-28을 구현·결정하고 판매자·운영자 필터·편성 검증의 stage 식을 공유한다. 검수의 Item 행 잠금을 편성 조회·잠금 포트에서도 재사용한다. M3-06 알림·M3-08 relist·감사 로그 후속은 유지한다. 실제 실행 결과는 PROGRESS M1-07을 따른다.

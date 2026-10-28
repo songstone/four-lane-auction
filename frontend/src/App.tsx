@@ -1,3 +1,4 @@
+import { AdminSessionLineupPage } from './pages/AdminSessionLineupPage';
 import { AdminSessionPage } from './pages/AdminSessionPage';
 import { HomePage } from './pages/HomePage';
 import { useSyncExternalStore } from 'react';
@@ -23,10 +24,13 @@ export function App() {
   const route = useSyncExternalStore(subscribeRoute, routeSnapshot);
   const url = new URL(route, window.location.origin);
   const returnTo = url.searchParams.get('returnTo');
+  const lineup = /^\/admin\/sessions\/([1-9]\d*)\/lineup$/.exec(url.pathname);
+  const lineupId = lineup ? Number(lineup[1]) : null;
   const page = url.pathname === '/login' ? <LoginPage returnTo={returnTo} /> :
     url.pathname === '/signup' ? <SignupPage returnTo={returnTo} /> :
     url.pathname === '/items/new' ? <RequireUser returnTo="/items/new"><ItemRegistrationPage /></RequireUser> :
     url.pathname === '/me/items' ? <RequireUser returnTo="/me/items"><MyItemsPage /></RequireUser> :
+    lineupId !== null && Number.isSafeInteger(lineupId) ? <RequireAdmin returnTo={url.pathname}><AdminSessionLineupPage sessionId={lineupId} /></RequireAdmin> :
     url.pathname === '/admin/sessions' ? <RequireAdmin returnTo="/admin/sessions"><AdminSessionPage /></RequireAdmin> :
     url.pathname === '/admin/items' ? <RequireAdmin><AdminItemReviewPage /></RequireAdmin> :
     url.pathname === '/admin/bid-policies' ? <RequireAdmin returnTo="/admin/bid-policies"><AdminBidPolicyPage /></RequireAdmin> :

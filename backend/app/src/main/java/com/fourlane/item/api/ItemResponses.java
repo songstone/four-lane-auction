@@ -37,7 +37,10 @@ public final class ItemResponses {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED) CurrentLot currentLot) {
         static Summary from(ItemView item) {
             return new Summary(item.itemId(), item.name(), item.imageUrl(), item.startPrice(), item.reviewStatus(),
-                    Stage.valueOf(item.reviewStatus().name()), item.rejectReason(), item.reviewedAt(), item.createdAt(), null);
+                    Stage.valueOf(item.stage()), item.rejectReason(), item.reviewedAt(), item.createdAt(),
+                    item.currentLot() == null ? null : new CurrentLot(item.currentLot().lotId(), item.currentLot().sessionId(),
+                        item.currentLot().laneNo(), item.currentLot().seqNo(), item.currentLot().status(),
+                        item.currentLot().scheduledStartAt(), item.currentLot().finalPrice(), item.currentLot().tradeStatus()));
         }
     }
     @Schema(name = "MyItemCurrentLot")

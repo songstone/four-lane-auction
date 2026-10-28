@@ -1,5 +1,118 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-07 회차 편성
+
+- 작업일: 2026-10-28 (Asia/Seoul).
+- 상태: **완료 (M1-07 로컬 수용 기준·아래 실제 실행 증거 기준)**. BE → GEN → FE → 통합과 최종 빌드를 마쳤다. push·dev 대상 PR 생성은 사용자 승인 범위다. 원격 CI 결과는 PR·완료 보고에서 확인하며 머지는 별도 지시가 필요하다.
+- 원본: TASKS 0장·M1-07·9장, PRD M-05·AC-05-1/2/4 거절·A-03·OQ-28/46, API 6.5·7.1·7.2, EVENTS 3.3·6.7, ARCH 3·4.4·4.6·5.5.1, CH-02, ADR-001~011과 PROGRESS M1-03/04/06 후속.
+- 시작 SHA: `f2a842c0dedc05e8a1b07cec13f2a53223f61a99`. fetch 후 dev=origin/dev·clean, 선행 M1-04 PR #7·M1-06 PR #9 ancestry 확인 후 `feature/M1-07-session-lineup` 생성.
+- 승인: 사용자 ①~⑤ 권장안·변경·검증·로컬 커밋·push·PR 생성 승인. 이 세션은 M1-07 하나만 진행한다.
+- 결정 기록: [ADR-012](adr/ADR-012-M1-07-session-lineup.md), PRD OQ-28, API 0.9, ARCH 3.3·4.6·부록 A, CH-02 (나) 편성 측 적용 표시. 새 의존성·Flyway·EVENTS 변경 없음. V1~V7 유지, 다음 번호 V8.
+- 커밋: `e8639ba` 결정·계약, `05a29dc` BE, `ab9f323` GEN, `8bb68b3` FE. 최종 기록은 별도 docs 커밋이다.
+
+### 승인한 구현과 경계
+
+- 다른 레인·회차의 같은 Item 중복 편성은 금지한다. 지금 그 레인에 있는 Item의 재편성·순서 변경은 허용한다. 이동은 원래 레인에서 제거·저장한 뒤 대상에 추가한다. 동일 Item 유찰 재출품 가격은 유지하며 실제 relist는 M3-08이다. 수정·철회 없음, 반려 뒤 새 Item 등록이라는 ADR-008 결정도 유지한다.
+- 편성 application TX만 READ_COMMITTED다. 같은 회차 행을 status=SCHEDULED 조건으로 먼저 갱신하고, 기존·요청 Item 합집합의 PK를 오름차순으로 잠근다. 잠금 뒤 최신 stage·다른 레인의 활성 Lot을 검사한다. 다른 격리수준·readOnly 외부 TX에 합류한 경우는 실패로 차단한다.
+- 회차 잠금은 M2-02 시작과 편성을 직렬화하는 준비다. 다른 회차는 다른 회차 행을 잠그므로 Item 행이 별도의 공통 잠금 대상이다. Item 조회·잠금 포트만 사용하고 Item 테이블은 변경하지 않는다.
+- 검증 → 기존 Lot DELETE·flush → 요청 순서의 새 PENDING Lot INSERT → 응답 조회가 한 TX다. Item의 시작가·최저 낙찰가를 복사하며 현재가는 시작가·입찰 수는 0이다. 같은 내용의 PUT도 새 lotId를 만든다. 커밋 뒤 컨트롤러가 응답한다.
+- stage는 공통 JPQL 식과 최신 `(createdAt, id)` Lot으로 계산한다. `createdAt >= reviewedAt` 경계를 판매자·운영자 필터·편성 판정이 함께 쓴다. 판매자 currentLot은 편성 위치·상태·시각·조건에 맞는 최종가를 제공한다. 실제 trade 테이블이 없는 현재 tradeStatus는 null이며 M3-07에서 연동한다.
+- Clock은 잠금 획득 뒤 한 번 읽는다. 승인 시각보다 이르면 500·전체 롤백한다. 승인 시각과 같은 밀리초는 유효하다. 일반 시계 점프 OQ-35나 재출품 재승인 시각의 처리까지 이번에 정한 것은 아니다.
+- FE는 생성 함수·TanStack Query·기존 ADMIN 가드를 사용한다. 레인별 추가·제거·위/아래 순서 변경·전체 저장, 저장된 편성 기준의 startable·emptyLaneNos·잠금 표시를 제공한다. 422·조회 실패·서버 편성 변경에서도 편집 초안을 유지하고 명시적인 불러오기로만 바꾼다. 통신 오류·5xx는 자동 재전송하지 않는다.
+
+### 단계별 실제 실행 증거
+
+| 단계 | 실제 결과 | 증거 |
+|---|---|---|
+| 집중 BE | 19개, 실패/오류/skip 0. 이 실행 뒤 잠금 후 성공 시각 검사 1개를 보강해 전체 게이트에서 실행 | `output/m1-07/be-focused.log`, `be-focused-summary.json`, `be-focused-results/` |
+| BE 게이트 | `gradlew test` 성공, app 258개 실제 실행·42클래스·실패/오류/skip 0. engine 10개는 이 단계 UP-TO-DATE이며 최종 clean build에서 새로 실행 | `be-all-tests.log`, `be-all-summary.json`, `be-all-results/` |
+| curl | 실제 bootRun에서 등록 6개·검수 후 24항목의 편성·재정렬·중복·거절·권한·조회 확인 | `curl-checks.json`, 개별 응답 JSON. 로그인·요청 비밀값은 ignored `.local` 파일 |
+| GEN | 실행 중인 현재 BE의 OpenAPI에서 Orval 8.45.0 생성·typecheck 성공. 생성 파일 직접 수정 없음 | `gen-api.log`, `gen-typecheck.log`, 커밋 ab9f323 |
+| FE | lint·typecheck·build 통과. FE 진입 이후 backend source tree는 05a29dc와 동일 | `final-lint.log`, `final-typecheck.log`, `final-frontend-build.log`, `be-tree.txt` |
+| 최종 BE | `clean build` PASS, 16태스크 모두 실행·캐시 미사용. UTC 268개(app 258+engine 10), Seoul app 258개, 실패/오류/skip 0. verifyTimeSources 운영 130파일·위반 0. JUnit XML 집계 검증기 PASS | `backend-clean-build.log`, `test-summary.json`, `ci-report-verifier.log`, `test-results/` |
+| 증거 검사 | Git 추적·비무시 336파일에서 이번 실제 검증 자격 정보·캡처한 Access Token 6개 값 일치 0건, `git diff --check` 통과 | `credential-scan.json`, `git diff --check` |
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 실제 근거 |
+|---|---|---|
+| AC-05-1 순서대로 PENDING 3개 | PASS | SessionLineupHttpIntegrationTest, curl `lineup-three`·`reorder`. 가격 복사·초기 값·순번·새 Lot ID·기존 Lot 삭제·시작 조건 검사 |
+| AC-05-2 검수 전·반려 거절 | PASS | 실제 등록·반려 행으로 422와 error.items의 두 단계·기존 편성 불변 확인. curl `pending-rejected` |
+| AC-05-4 거절 부분 | PASS | BIDDING·SOLD·UNSOLD Lot fixture에서 ON_AUCTION·SOLD·UNSOLD 422. 경매 엔진 실행이나 재출품 API를 사용한 증거는 아님 |
+| 같은 itemId 두 번 | PASS | SessionLineupValidationTest·ControllerTest·실제 curl duplicate의 400, itemIds[1]/DUPLICATE |
+| 판매자 편성됨·제거 후 승인 | PASS | 두 API의 공통 7단계·승인 시각 경계·동률 최신 ID·과거 Lot 제외 검사. 실제 두 브라우저 세션에서 편성 위치 표시와 삭제 뒤 APPROVED/currentLot=null 확인 |
+| startable·emptyLaneNos | PASS | 빈 레인별 계산·모든 레인 저장 후 시작 가능·한 레인 비우면 불가를 API와 화면에서 확인 |
+| OQ-28 중복 편성 경합 | PASS | SessionLineupConcurrencyTest: 다른 회차 500회, 같은 회차 다른 레인 500회, 역순 중첩 Item 목록 500회, 제거/추가 300회. ExecutorService+CountDownLatch, 실제 MySQL. 최종 clean build의 UTC·Seoul에서 각각 1,800회, 합계 3,600라운드. 성공/거절·DB 중복 0·원자성을 라운드마다 확인. 처리량·지연 측정 아님 |
+| 트랜잭션·최신 읽기·시간 | PASS | SessionLineupFailureIntegrationTest: 무변경 조건부 UPDATE matched rows=1, 낡은 외부 격리수준 거절, INSERT CHECK·beforeCommit 실패 시 삭제한 Lot까지 복원, 회차 행 대기 뒤 상태 재검사, 초기 조회 뒤 Item 잠금 대기 중 커밋된 편성 확인, 잠금 뒤 Clock 1회·역행 500·동일 시각 허용 |
+| 인가·비공개 가격 | PASS | 익명 401·USER 403·ADMIN 허용, missing itemIds·unassignable items·기존 API 오류 JSON. 실제 응답 카탈로그에 편성·판매자 편성 후 조회 등록. ADMIN 검수 상세의 기존 정확한 최상위 예외 외에는 최저가 필드·값 비노출 |
+| 시작 뒤 편성 잠금 준비 | PASS (fixture 범위) | 통제된 TX의 회차 상태 변경 뒤 대기 편성은 SESSION_NOT_SCHEDULED. 실제 DB RUNNING fixture 화면은 저장 비활성. fixture를 복구·제거함 |
+| AC-05-3 실제 시작과 편성 경합 | NOT_RUN / M2-02 | 실제 SessionStarter·자동 시작이 아직 이 작업 범위에 없음. 위 fixture 결과를 실제 시작 증거로 쓰지 않음 |
+| AC-05-4 재출품→재승인→편성 | NOT_RUN / M3-08 | 이번은 거절 부분과 가격 유지 정책만. relist API 구현은 후속 |
+
+### 실제 화면 검증
+
+fresh Chrome CLI 세션 `m107-admin`·`m107-user`로 실제 bootRun+Vite 응답을 사용했다. 기존 8080/5173 프로세스와 분리한 검증 포트는 앱 18080·관리 18081·Vite 15173이다. 아래 로그·PNG는 `output/playwright/m1-07/`에, 실행 스크립트는 ignored `output/m1-07/`에 있다.
+
+- `ui-login.log`: 익명 동적 편성 URL → 로그인 → 회차 #5 편성으로 복귀, ADMIN 메뉴 확인. initial-lineup.png.
+- `ui-lineup.log`: 물품 선택·추가, 저장 중 원본 요청을 지연해 더블클릭 PUT 1건 확인, 실제 저장 200. 다른 레인 초안에 남겨 둔 같은 물품을 저장하면 실제 422/SCHEDULED이고 초안 유지. 순서 변경 후 새 Lot ID·순번 일치. save-pending.png, stale-candidate-422.png, saved-lineup.png, mobile-lineup.png.
+- `ui-seller.log`·`ui-clear.log`·`ui-seller-refresh.log`: 다른 브라우저의 USER가 편성됨·회차 #5/레인 1/2번째를 확인. ADMIN 제거·저장 뒤 USER 목록 재조회로 승인·위치 제거 확인. USER 편성 URL 접근 차단. seller-scheduled.png, cleared-lineup.png, seller-approved-mobile.png, user-admin-denied.png.
+- `ui-states.log`: 실제 GET 응답 지연 중 로딩, 실제 DB 상태 fixture의 잠금과 저장 비활성, 전송 실패 주입 뒤 재시도 시 실제 404, A-02 설정에서 A-03 이동. loading.png, locked-fixture.png, transport-error.png. 합성 성공 응답은 사용하지 않음.
+- `ui-background-error.log`: 실제 조회의 전송 실패를 주입해도 편집 초안 유지, 정상 200 재조회 뒤에도 유지, 사용자가 불러오기를 눌렀을 때만 초기화. background-error-draft.png.
+- 데스크톱·390px 모바일 PNG를 직접 확인했다. 모바일 viewport/document 모두 390px이며 가로 넘침이 없었다. ui-login·ui-lineup에서 수집한 uncaught pageerror는 0건이다. 익명 초기 Refresh 401, 검증한 422·주입 전송 실패·실제 404, 최종 빌드를 위해 앱을 정지한 뒤의 WebSocket 연결 실패는 제품 JavaScript 실행 예외와 구분한다.
+- `ui-final.log`: 최종 clean build 뒤 현재 소스로 bootRun 재기동·브라우저 전체 재조회 확인. final-current-source.png. 기본 8080/8081 앱도 현재 코드로 복구했으며 실제 상태는 `final-runtime-state.json`에 보관했다.
+- 잠금 fixture는 이번 작업에서 만든 회차 #6·물품 #34/35만 사용했다. 준비한 편성을 실제 SQL로 RUNNING/BIDDING으로 바꿔 화면을 확인한 뒤 SCHEDULED/READY/PENDING 복구·편성 제거를 마쳤다. 실제 시작·타이머·이벤트 실행이 아니다.
+
+### 직접 확인하는 방법
+
+```powershell
+# 저장소 루트
+Set-Location backend
+.\gradlew.bat clean build
+Set-Location ../frontend
+npm run lint
+npm run typecheck
+npm run build
+```
+
+1. 로컬 MySQL을 `docker compose up -d mysql`로 실행한다. JWT_SECRET_BASE64 등 기존 로컬 설정을 사용해 backend에서 `.\gradlew.bat :app:bootRun`, 다른 터미널의 frontend에서 `npm run dev`를 실행한다. Compose app 서비스는 올리지 않는다.
+2. 서로 다른 브라우저 프로필로 ADMIN·판매자 USER를 로그인한다. ADMIN의 회차 관리 → 회차 설정 열기 → 회차 편성 열기로 이동한다. 비로그인 직접 편성 URL도 로그인 후 원래 회차로 돌아온다.
+3. 승인 후보를 레인 1·2에 선택해 추가하고 각각 저장한다. 저장 전 변경은 초안이며 저장 뒤 시작 가능 표시가 켜진다. 순서를 위/아래로 바꿔 저장·다시 조회해 확인한다.
+4. USER의 내 출품 목록에서 목록 새로고침을 누르면 편성됨·회차·레인·순번이 표시된다. ADMIN이 해당 물품을 제거·저장한 뒤 USER가 다시 조회하면 승인됨·편성 대기로 돌아온다.
+5. 오래된 후보 거절은 동일 물품을 레인 두 곳의 초안에 넣고 한쪽만 먼저 저장한 뒤 다른 쪽을 저장하면 재현된다. 다른 쪽은 422와 현재 단계를 표시하고 초안을 유지한다.
+6. 레인 전체를 제거·저장하면 비어 있는 레인 번호와 시작 불가를 표시한다. 다른 곳으로 옮길 때는 원래 레인 제거를 먼저 저장한다.
+
+```powershell
+# API·ADMIN·SESSION_ID·ITEM_A·ITEM_B는 실제 로그인/목록 조회 결과로 지정한다.
+$API='http://127.0.0.1:8080'
+curl.exe -sS "$API/api/admin/items?stage=APPROVED" -H "Authorization: Bearer $ADMIN"
+$body=@{itemIds=@($ITEM_A,$ITEM_B)} | ConvertTo-Json -Compress
+$requestFile=Join-Path $env:TEMP 'fourlane-m1-07-lineup.json'
+[IO.File]::WriteAllText($requestFile,$body)
+curl.exe -sS -X PUT "$API/api/admin/sessions/$SESSION_ID/lanes/1/lots" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' --data-binary "@$requestFile"
+# 200, seqNo 1/2와 새 lotId. 같은 itemId 두 번이면 400/DUPLICATE.
+# 다른 레인·회차에 있는 Item이면 422/ITEM_NOT_ASSIGNABLE + error.items.
+# itemIds=[]로 저장하면 레인을 비운다.
+```
+
+### 재현 중 확인·수정
+
+- 첫 집중 테스트는 TransactionTemplate 반환값과 AssertJ 오버로드의 타입 추론 모호성으로 컴파일이 실패했다. Integer 지역 변수로 명시한 뒤 집중·전체 테스트를 통과했다. 테스트를 삭제·skip하지 않았다.
+- 기존 앱이 8080을 사용하여 별도 포트로 검증했다. 종료 중인 bootRun의 로그 파일을 재사용하는 실행 스크립트는 새 실행별 로그 이름으로 수정했다. CLI 세션 인자도 PowerShell 확장을 명시했다. 제품 성공 응답을 합성하거나 오류를 숨기지 않았다.
+- background refetch 실패 시 캐시 데이터가 있어도 전체 편집 화면을 내리면 초안이 사라질 수 있어, 캐시를 유지한 채 오류·재시도 안내만 추가하도록 FE를 정리했다. 실제 전송 실패 주입·정상 200 재조회에서 초안 유지와 명시적 초기화를 확인했다.
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 회차 행을 먼저 잠가야 편성 변경과 시작 조건 검사 사이에 빈 레인이 끼어들지 않는다. M2-02 시작이 먼저면 편성은 거절하고, 편성이 먼저면 시작은 커밋된 편성으로 조건을 검사한다. 다른 회차끼리는 이 잠금을 공유하지 않으므로 Item PK가 추가 공통 잠금 대상이다.
+- 존재하지 않는 Lot만 검사하면 두 요청이 모두 빈 결과를 보고 삽입할 수 있다. 존재하는 Item 행을 잠그고, 오름차순 합집합으로 제거·교체까지 같은 규약에 참여시킨다. 모든 편성 경로가 이 규칙을 따라야 하며 우회 SQL·락 순서 역전은 중복·교착을 만들 수 있다.
+- REPEATABLE READ의 일반 조회 스냅샷은 Item 잠금 대기 뒤에도 낡을 수 있다. 편성 전용 READ_COMMITTED로 잠금 후 판정 조회를 새로 수행한다. 외부 TX가 설정을 덮어쓰지 않는지도 막는다. 잠금은 DB 연결을 점유하며 일반 DB 장애·락 타임아웃·교착은 500이다.
+- 커밋 전 실패는 기존 Lot 삭제까지 롤백한다. 커밋 ACK 유실은 다른 문제다. 통신 오류·5xx 뒤에는 상세를 확인하며 자동 재전송하지 않는다. 같은 레인의 동시 전체 저장은 직렬 처리의 마지막 저장이 남는다. revision·원자적 레인 이동 계약은 추가하지 않았다.
+- Clock의 국소 역행 가드는 승인보다 이른 Lot을 저장하지 않게 한다. updated_at 전체의 단조성이나 일반 시계 점프를 해결한 것은 아니다. M3-08 재승인과 과거 Lot의 동일 밀리초·시계 점프 경계는 해당 작업에서 확인해야 한다.
+- 후속: M1-08 공개 편성 관전·연결 수명, M2-02 실제 시작/편성 경합·정책 고정, M3-07 tradeStatus 연동·기존 member_warning trade FK, M3-08 relist. OQ-28의 제품 정책은 닫았고 OQ-35·38 등 다른 정책은 정하지 않았다.
+- **NOT_RUN:** 실제 DB 커밋 ACK 유실·전원 장애·DB 네트워크 단절·락 타임아웃 장애 주입, 실제 경매 시작·완주·복구·부하/성능·운영 HTTPS/TLS·AWS·배포. CHECK/beforeCommit 실패 주입·로컬 HTTP·MySQL·화면 fixture 결과를 이들 증거로 바꾸어 쓰지 않는다.
+- 로컬 ignored 출력·스크린샷은 이 워크스페이스의 증거이며 저장소에는 포함하지 않는다. 원격 CI 테스트 XML/HTML은 해당 PR의 Actions artifact로 따로 확인한다.
+
+---
+
 ## M1-06 회차 생성, 예정 시각 변경, 회차 목록
 
 - 작업일: 2026-10-28 (Asia/Seoul).

@@ -5,6 +5,8 @@ import java.util.List;
 
 public interface ItemCatalog {
     interface Row {
+        String getStage(); Long getLotId(); Long getSessionId(); Integer getLaneNo(); Integer getSeqNo();
+        String getLotStatus(); Instant getScheduledStartAt(); Long getFinalPrice();
         long getItemId();
         String getName();
         String getStorageKey();

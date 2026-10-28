@@ -6,6 +6,7 @@
  */
 import type { ErrorDetailReviewStatus } from './errorDetailReviewStatus';
 import type { FieldViolation } from './fieldViolation';
+import type { ItemStage } from './itemStage';
 import type { LaneReference } from './laneReference';
 
 export interface ErrorDetail {
@@ -14,4 +15,6 @@ export interface ErrorDetail {
   lane?: LaneReference;
   fields?: FieldViolation[];
   reviewStatus?: ErrorDetailReviewStatus;
+  itemIds?: number[];
+  items?: ItemStage[];
 }
