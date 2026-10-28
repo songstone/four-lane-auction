@@ -26,7 +26,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ErrorCode code = exception.getErrorCode();
         return ResponseEntity.status(code.getStatus())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(ApiErrorResponse.of(code, exception.getLane(), exception.getFields()));
+                .body(ApiErrorResponse.of(code, exception.getLane(), exception.getFields(), exception.getReviewStatus()));
     }
 
     @Override

@@ -8,6 +8,14 @@ import tools.jackson.databind.JsonNode;
 public final class ReservePriceAssertions {
     private ReservePriceAssertions() {}
     public static void assertHidden(JsonNode actual, Set<Long> markers) { visit(actual, "$", markers); }
+    public static void assertAdminItemDetail(JsonNode actual, long expected, Set<Long> markers) {
+        assertThat(actual.isObject()).isTrue();
+        assertThat(actual.path("reservePrice").isIntegralNumber()).isTrue();
+        assertThat(actual.path("reservePrice").asLong()).isEqualTo(expected);
+        var remaining = (tools.jackson.databind.node.ObjectNode) actual.deepCopy();
+        remaining.remove("reservePrice");
+        assertHidden(remaining, markers);
+    }
     private static void visit(JsonNode node, String path, Set<Long> markers) {
         if (node.isObject()) {
             for (var entry : node.properties()) {

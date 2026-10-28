@@ -52,6 +52,22 @@ class ReservePriceContractTest extends ItemTestSupport {
         catalog.rest("GET", "/api/me/items", "OTHER_USER", 200, () -> mvc.perform(get("/api/me/items").header("Authorization", "Bearer " + token(other, "USER"))).andReturn());
         catalog.binary("GET", "/api/images/{storageKey}", "ANONYMOUS", () -> mvc.perform(get("/api/images/" + key)).andReturn());
         catalog.rest("GET", "/api/images/{storageKey}", "ANONYMOUS_MISSING", 404, () -> mvc.perform(get("/api/images/" + "a".repeat(32))).andReturn());
+        String administrator = "Bearer " + token(admin, "ADMIN");
+        long reviewId = body(item).get("itemId").asLong();
+        String reviewPath = "/api/admin/items/" + reviewId;
+        var secondItem = upload(seller, "USER", Map.of("name", "반려 응답 검사", "startPrice", "50000", "reservePrice", Long.toString(MARKER)), List.of(ImageFixtures.PNG));
+        assertThat(secondItem.statusCode()).isEqualTo(201);
+        long rejectedId = body(secondItem).path("itemId").asLong();
+        catalog.rest("GET", "/api/admin/items", "ADMIN", 200, () -> mvc.perform(get("/api/admin/items").param("stage", "PENDING_REVIEW").header("Authorization", administrator)).andReturn());
+        catalog.adminItemDetail(MARKER, () -> mvc.perform(get(reviewPath).header("Authorization", administrator)).andReturn());
+        catalog.rest("GET", "/api/admin/items/{itemId}", "USER", 403, () -> mvc.perform(get(reviewPath).header("Authorization", owner)).andReturn());
+        catalog.rest("GET", "/api/admin/items/{itemId}", "ADMIN_MISSING", 404, () -> mvc.perform(get("/api/admin/items/9000000000").header("Authorization", administrator)).andReturn());
+        catalog.rest("POST", "/api/admin/items/{itemId}/approve", "ADMIN", 200, () -> mvc.perform(post(reviewPath + "/approve").header("Authorization", administrator)).andReturn());
+        catalog.rest("POST", "/api/admin/items/{itemId}/approve", "USER", 403, () -> mvc.perform(post(reviewPath + "/approve").header("Authorization", owner)).andReturn());
+        catalog.rest("POST", "/api/admin/items/{itemId}/reject", "ADMIN", 200, () -> mvc.perform(post("/api/admin/items/" + rejectedId + "/reject").header("Authorization", administrator).contentType("application/json").content("{\"reason\":\"확인 불가\"}")).andReturn());
+        catalog.rest("POST", "/api/admin/items/{itemId}/approve", "ADMIN_REPEATED", 422, () -> mvc.perform(post(reviewPath + "/approve").header("Authorization", administrator)).andReturn());
+        catalog.rest("POST", "/api/admin/items/{itemId}/reject", "ADMIN_REPEATED", 422, () -> mvc.perform(post(reviewPath + "/reject").header("Authorization", administrator).contentType("application/json").content("{\"reason\":\"확인 불가\"}")).andReturn());
+        catalog.rest("POST", "/api/admin/items/{itemId}/reject", "USER", 403, () -> mvc.perform(post(reviewPath + "/reject").header("Authorization", owner).contentType("application/json").content("{\"reason\":\"확인 불가\"}")).andReturn());
         catalog.verifyRestCoverage(mappings);
         // No product lane event producer exists in M1-03. Future producers must supply real captures and type coverage.
         catalog.verifyEventCoverage(Set.of());
@@ -62,5 +78,11 @@ class ReservePriceContractTest extends ItemTestSupport {
                 "{\"value\":917431000}", "{\"value\":\"917,431,000원\"}", "{\"value\":\"917431000\"}"))
             assertThatThrownBy(() -> ReservePriceAssertions.assertHidden(json.readTree(leaked), Set.of(MARKER))).isInstanceOf(AssertionError.class);
         ReservePriceAssertions.assertHidden(json.readTree("{\"reserveNotMet\":true,\"startPrice\":50000}"), Set.of(MARKER));
+    }
+    @Test void administratorExceptionAllowsOnlyTheExactTopLevelFieldAndExactStoredValue() {
+        ReservePriceAssertions.assertAdminItemDetail(json.readTree("{\"reservePrice\":917431000,\"name\":\"상품\"}"), MARKER, Set.of(MARKER));
+        for (String rest : List.of("\"nested\":{\"reservePrice\":0}", "\"alias\":917431000", "\"reserve_price\":0"))
+            assertThatThrownBy(() -> ReservePriceAssertions.assertAdminItemDetail(json.readTree("{\"reservePrice\":917431000," + rest + "}"), MARKER, Set.of(MARKER))).isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> ReservePriceAssertions.assertAdminItemDetail(json.readTree("{\"reservePrice\":1}"), MARKER, Set.of(MARKER))).isInstanceOf(AssertionError.class);
     }
 }

@@ -16,6 +16,8 @@ const messages: Record<string, string> = {
   IMAGE_TOO_LARGE: '이미지는 장당 10MB, 전체 요청은 101MB까지 등록할 수 있습니다.',
   IMAGE_NOT_FOUND: '이미지를 찾을 수 없습니다.',
   AUTH_SESSION_CHANGED: '로그인 계정이 바뀌었습니다. 내 출품 목록을 확인해 주세요.',
+  ITEM_NOT_FOUND: '출품물을 찾을 수 없습니다. 목록을 다시 확인해 주세요.',
+  ITEM_NOT_PENDING_REVIEW: '이미 검수가 끝난 출품물입니다. 최신 상태를 확인해 주세요.',
 };
 
 const fieldMessages: Record<string, string> = {
@@ -80,4 +82,16 @@ const itemFieldMessages: Record<string, Record<string, string>> = {
 
 export function itemFieldErrors(fields: FieldError[]): Record<string, string> {
   return Object.fromEntries(fields.map(({ field, reason }) => [field, itemFieldMessages[field]?.[reason] ?? '입력값을 확인해 주세요.']));
+}
+
+export function reviewReasonError(reason: string): string | null {
+  if (!reason.trim()) return '반려 사유를 입력해 주세요.';
+  if (Array.from(reason).length > 500) return '반려 사유는 500자까지 입력할 수 있습니다.';
+  return null;
+}
+
+export function reviewFieldError(error: unknown): string | null {
+  if (!(error instanceof ApiRequestError)) return null;
+  const field = error.fields.find(field => field.field === 'reason');
+  return field ? field.reason === 'TOO_LONG' ? '반려 사유는 500자까지 입력할 수 있습니다.' : '반려 사유를 입력해 주세요.' : null;
 }

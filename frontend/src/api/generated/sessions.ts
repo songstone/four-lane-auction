@@ -5,10 +5,15 @@
  * OpenAPI spec version: v0
  */
 import type {
+  AdminItemDetail,
+  AdminItemListResponse,
   ApiErrorResponse,
   AuthResponse,
   ItemRegistrationRequest,
   ItemRegistrationResponse,
+  ItemRejectionRequest,
+  ItemReviewResponse,
+  ListAdminItemsParams,
   ListMyItemsParams,
   ListSessionsParams,
   LoginRequest,
@@ -357,6 +362,171 @@ const res = await fetch(getLoginUrl(),
 
 
 
+export type rejectItemResponse200 = {
+  data: ItemReviewResponse
+  status: 200
+}
+
+export type rejectItemResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type rejectItemResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type rejectItemResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type rejectItemResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type rejectItemResponse422 = {
+  data: ApiErrorResponse
+  status: 422
+}
+
+export type rejectItemResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type rejectItemResponseSuccess = (rejectItemResponse200) & {
+  headers: Headers;
+};
+export type rejectItemResponseError = (rejectItemResponse400 | rejectItemResponse401 | rejectItemResponse403 | rejectItemResponse404 | rejectItemResponse422 | rejectItemResponse500) & {
+  headers: Headers;
+};
+
+export type rejectItemResponse = (rejectItemResponseSuccess | rejectItemResponseError)
+
+export const getRejectItemUrl = (itemId: number,) => {
+
+
+
+
+  return `/api/admin/items/${itemId}/reject`
+}
+
+/**
+ * @summary 출품 반려
+ */
+export const rejectItem = async (itemId: number,
+    itemRejectionRequest: ItemRejectionRequest, options?: RequestInit): Promise<rejectItemResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getRejectItemUrl(itemId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(itemRejectionRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: rejectItemResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as rejectItemResponse
+}
+
+
+
+export type approveItemResponse200 = {
+  data: ItemReviewResponse
+  status: 200
+}
+
+export type approveItemResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type approveItemResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type approveItemResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type approveItemResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type approveItemResponse422 = {
+  data: ApiErrorResponse
+  status: 422
+}
+
+export type approveItemResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type approveItemResponseSuccess = (approveItemResponse200) & {
+  headers: Headers;
+};
+export type approveItemResponseError = (approveItemResponse400 | approveItemResponse401 | approveItemResponse403 | approveItemResponse404 | approveItemResponse422 | approveItemResponse500) & {
+  headers: Headers;
+};
+
+export type approveItemResponse = (approveItemResponseSuccess | approveItemResponseError)
+
+export const getApproveItemUrl = (itemId: number,) => {
+
+
+
+
+  return `/api/admin/items/${itemId}/approve`
+}
+
+/**
+ * @summary 출품 승인
+ */
+export const approveItem = async (itemId: number, options?: RequestInit): Promise<approveItemResponse> => {
+
+  const res = await fetch(getApproveItemUrl(itemId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: approveItemResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as approveItemResponse
+}
+
+
+
 export type listSessionsResponse200 = {
   data: SessionListResponse
   status: 200
@@ -617,4 +787,161 @@ export const getImage = async (storageKey: string, options?: RequestInit): Promi
   const body = [204, 205, 304].includes(res.status) ? null : await res.blob();
   const data: getImageResponseSuccess['data'] = body as getImageResponseSuccess['data']
   return { data, status: res.status, headers: res.headers } as getImageResponseSuccess
+}
+
+
+
+export type listAdminItemsResponse200 = {
+  data: AdminItemListResponse
+  status: 200
+}
+
+export type listAdminItemsResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type listAdminItemsResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type listAdminItemsResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type listAdminItemsResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type listAdminItemsResponse422 = {
+  data: ApiErrorResponse
+  status: 422
+}
+
+export type listAdminItemsResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type listAdminItemsResponseSuccess = (listAdminItemsResponse200) & {
+  headers: Headers;
+};
+export type listAdminItemsResponseError = (listAdminItemsResponse400 | listAdminItemsResponse401 | listAdminItemsResponse403 | listAdminItemsResponse404 | listAdminItemsResponse422 | listAdminItemsResponse500) & {
+  headers: Headers;
+};
+
+export type listAdminItemsResponse = (listAdminItemsResponseSuccess | listAdminItemsResponseError)
+
+export const getListAdminItemsUrl = (params: ListAdminItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/items?${stringifiedParams}` : `/api/admin/items`
+}
+
+/**
+ * @summary 운영자 출품 목록
+ */
+export const listAdminItems = async (params: ListAdminItemsParams, options?: RequestInit): Promise<listAdminItemsResponse> => {
+
+  const res = await fetch(getListAdminItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: listAdminItemsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as listAdminItemsResponse
+}
+
+
+
+export type getAdminItemResponse200 = {
+  data: AdminItemDetail
+  status: 200
+}
+
+export type getAdminItemResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type getAdminItemResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type getAdminItemResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type getAdminItemResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type getAdminItemResponse422 = {
+  data: ApiErrorResponse
+  status: 422
+}
+
+export type getAdminItemResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type getAdminItemResponseSuccess = (getAdminItemResponse200) & {
+  headers: Headers;
+};
+export type getAdminItemResponseError = (getAdminItemResponse400 | getAdminItemResponse401 | getAdminItemResponse403 | getAdminItemResponse404 | getAdminItemResponse422 | getAdminItemResponse500) & {
+  headers: Headers;
+};
+
+export type getAdminItemResponse = (getAdminItemResponseSuccess | getAdminItemResponseError)
+
+export const getGetAdminItemUrl = (itemId: number,) => {
+
+
+
+
+  return `/api/admin/items/${itemId}`
+}
+
+/**
+ * @summary 운영자 출품 상세 (최저 낙찰가 포함)
+ */
+export const getAdminItem = async (itemId: number, options?: RequestInit): Promise<getAdminItemResponse> => {
+
+  const res = await fetch(getGetAdminItemUrl(itemId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getAdminItemResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getAdminItemResponse
 }

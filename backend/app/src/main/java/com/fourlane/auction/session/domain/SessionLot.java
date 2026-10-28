@@ -14,6 +14,12 @@ public class SessionLot {
     private Long id;
     @Column(name = "lane_id", nullable = false)
     private Long laneId;
+    @Column(name = "item_id", nullable = false) private Long itemId;
+    @Column(name = "seq_no", nullable = false) private int seqNo;
+    @Column(nullable = false, length = 20) private String status;
+    @Column(name = "current_price", nullable = false) private long currentPrice;
+    @Column(name = "bid_count", nullable = false) private int bidCount;
+    @Column(name = "created_at", nullable = false, columnDefinition = "DATETIME(3)") private java.time.Instant createdAt;
 
     protected SessionLot() {}
 }
