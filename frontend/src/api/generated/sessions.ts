@@ -9,6 +9,9 @@ import type {
   AdminItemListResponse,
   ApiErrorResponse,
   AuthResponse,
+  BidPolicyCreateRequest,
+  BidPolicyListResponse,
+  BidPolicyResponse,
   ItemRegistrationRequest,
   ItemRegistrationResponse,
   ItemRejectionRequest,
@@ -523,6 +526,150 @@ export const approveItem = async (itemId: number, options?: RequestInit): Promis
 
   const data: approveItemResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as approveItemResponse
+}
+
+
+
+export type listBidPoliciesResponse200 = {
+  data: BidPolicyListResponse
+  status: 200
+}
+
+export type listBidPoliciesResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type listBidPoliciesResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type listBidPoliciesResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type listBidPoliciesResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type listBidPoliciesResponseSuccess = (listBidPoliciesResponse200) & {
+  headers: Headers;
+};
+export type listBidPoliciesResponseError = (listBidPoliciesResponse400 | listBidPoliciesResponse401 | listBidPoliciesResponse403 | listBidPoliciesResponse500) & {
+  headers: Headers;
+};
+
+export type listBidPoliciesResponse = (listBidPoliciesResponseSuccess | listBidPoliciesResponseError)
+
+export const getListBidPoliciesUrl = () => {
+
+
+
+
+  return `/api/admin/bid-policies`
+}
+
+/**
+ * @summary 호가 정책 버전 목록
+ */
+export const listBidPolicies = async ( options?: RequestInit): Promise<listBidPoliciesResponse> => {
+
+  const res = await fetch(getListBidPoliciesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: listBidPoliciesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as listBidPoliciesResponse
+}
+
+
+
+export type createBidPolicyResponse201 = {
+  data: BidPolicyResponse
+  status: 201
+}
+
+export type createBidPolicyResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type createBidPolicyResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type createBidPolicyResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type createBidPolicyResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type createBidPolicyResponseSuccess = (createBidPolicyResponse201) & {
+  headers: Headers;
+};
+export type createBidPolicyResponseError = (createBidPolicyResponse400 | createBidPolicyResponse401 | createBidPolicyResponse403 | createBidPolicyResponse500) & {
+  headers: Headers;
+};
+
+export type createBidPolicyResponse = (createBidPolicyResponseSuccess | createBidPolicyResponseError)
+
+export const getCreateBidPolicyUrl = () => {
+
+
+
+
+  return `/api/admin/bid-policies`
+}
+
+/**
+ * @summary 새 호가 정책 버전 등록
+ */
+export const createBidPolicy = async (bidPolicyCreateRequest: BidPolicyCreateRequest, options?: RequestInit): Promise<createBidPolicyResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getCreateBidPolicyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(bidPolicyCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: createBidPolicyResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as createBidPolicyResponse
 }
 
 
