@@ -1,5 +1,125 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-05 호가 정책 (Strategy와 버전 관리)
+
+- 작업일: 2026-10-28 (Asia/Seoul).
+- 상태: **완료 (M1-05 로컬 수용 기준·아래 실제 실행 증거 기준)**. BE → GEN → FE → 통합과 최종 빌드를 마쳤다. push·dev 대상 PR 생성은 이번 사용자 승인 범위다. 원격 게시·CI 결과는 PR과 완료 보고에서 별도로 확인하며 머지는 별도 지시가 필요하다.
+- 원본: TASKS 0장·M1-05·9장·1.1, PRD M-08·S-04·AC-08-1/3·A-05·6.3·9.7, API 7.4, EVENTS의 nextPrice 계약, ARCH 3·4.4, ADR-001~009와 기존 후속 항목.
+- 시작 SHA: `458663009ed2f027fd8d6f92bd178788fedabeae`. fetch 후 dev=origin/dev·clean, 선행 M1-01 PR #4 ancestry 확인 후 `feature/M1-05-bid-policy` 생성.
+- 승인: 사용자 ① 전용 카운터 ② JS 안전 정수 상한 ③ FE 포함 및 변경·검증·기록·로컬 커밋·push·PR 생성 승인. TASKS 9장의 기존 OQ·B 중 이번 작업에 배정된 것은 없다.
+- 결정 기록: [ADR-010](adr/ADR-010-M1-05-bid-policy.md), PRD OQ-56, API 0.7, ARCH 4장·부록 A. 새 의존성·EVENTS 변경·CHALLENGES 미결 후보 선택 없음.
+- 커밋: `19cc0aa` 결정·계약, `065f600` BE, `2252681` GEN, `909b9aa` FE. 이 절은 마지막 docs 커밋이다.
+
+### 승인한 구현과 경계
+
+- engine의 `BidIncrementPolicy`·`TieredBidIncrementPolicy`는 java.*만 사용한다. 구간 하한 포함·엄격 증가를 검사하고 방어 복사한다. 다음 호가는 현재가에 해당 구간 단위를 더하며 `Math.addExact`로 넘침을 검출한다. 엔티티 → 엔진 변환은 app의 `BidPolicyMapper`가 맡는다.
+- V6 `bid_policy_version_counter`를 기존 MAX(version)으로 초기화한다. application @Transactional 안에서 입력 검증 → 카운터 id=1 PK 잠금 → Clock 1회 → 카운터 증가·새 정책·구간 INSERT → 커밋 후 응답한다. 정책·구간은 `@Immutable`·수정 불가 컬럼·persist 전용 저장 포트로 다루며 수정·삭제 API가 없다. 직접 DB 관리자 UPDATE를 차단하는 트리거·권한 분리는 이번 범위가 아니다.
+- 조회는 readOnly와 JPQL 프로젝션 한 번으로 정책·구간·작성자 닉네임을 읽는다. 버전 내림차순·하한 오름차순이며 조회 결과에서 최대 버전 하나만 isLatest다. 작성자 ID는 응답하지 않는다. 시드 작성자는 null이다.
+- API는 정수 아닌 JSON을 조용히 long으로 바꾸지 않는다. 각 값은 최대 9,007,199,254,740,991이며 첫 하한 0·엄격 증가·양수 호가 단위·1,000원 배수 규칙을 함께 검사한다. 구간 하한에 배수 제한을 추가하지 않는다. 입력 순서도 정렬하지 않는다.
+- FE는 생성 클라이언트만 호출한다. 최신 정책을 초안으로 불러오기·구간 추가/삭제·필드 오류·새 버전 등록·등록 후 목록 재조회, 운영자 메뉴·경로·로그인 복귀·계정별 캐시 제거를 구현했다. 자동 등록 재시도는 없고 결과가 불확실하면 목록 확인을 안내한다.
+- AC-08-2의 실제 회차 시작 시 고정은 TASKS대로 M2-02·M2-06 후속이다. 이번 계산·버전 불변 검증을 경매 완주 증거로 쓰지 않는다.
+
+### 단계별 실제 실행 증거
+
+아래 로컬 로그·JSON은 `output/m1-05/`, 화면 로그·PNG는 `output/playwright/m1-05/`에 있다. 모두 gitignore 대상이며 인증 응답·자격 값은 `.local` 파일로 분리했다.
+
+| 단계 | 실제 결과 | 증거 |
+|---|---|---|
+| BE 집중 | 정책·스키마·공용 계약 28개, 실패/오류/skip 0. engine 단위 테스트 10개도 실행 통과 | `be-focused.log`, `m1-05-compile.log` (output 루트) |
+| BE 게이트 | backend 전체 test의 app 193개, 실패/오류/skip 0. 아래 bootRun curl 뒤 GEN 진입 | `be-all-tests.log`, `be-test-summary.json`, `be-test-results/` |
+| 최종 BE | clean build PASS. 16 actionable tasks 모두 실행. engine 10개 + app UTC 193개 + app Seoul 193개 = 396회, 실패/오류/skip 0. app은 같은 193개를 두 JVM에서 실행한 것. 시간 출처 검사 107파일·위반 0 | `backend-clean-build.log`, `test-summary.json`, `test-results/` |
+| 정책 계산 | 기본 v1의 경계값 4개와 시작가 50,000 → 첫 금액 60,000. 실제 MySQL v1 행을 app Mapper로 변환한 계산도 일치 | TieredBidIncrementPolicyTest, BidPolicyHttpIntegrationTest |
+| 동시성·불변 | 최종 clean build의 UTC·Seoul 각 500라운드, 합계 1,000라운드·등록 명령 2,000건. 매 라운드 서로 다른 운영자 2명의 201 두 개·N+1/N+2·각 작성자/구간·기존 행 전체 불변 확인. 집중·BE 게이트에서도 각각 별도 통과 | BidPolicyConcurrencyTest. 성능·처리량 측정 아님 |
+| 원자성·시간 | beforeCommit 실패와 실제 구간 INSERT CHECK 실패 때 카운터·정책·구간 전체 롤백, 다음 등록은 v2. 락 보유 중 Clock 이동 뒤 획득 후 시각 저장. INT 버전 넘침은 500·DB 불변 | BidPolicyFailureIntegrationTest |
+| 입력·인가·계약 | 누락·빈 배열·중복·역순·음수·단위·문자열·소수·boolean·안전 정수 경계, 익명 401·USER 403·DB 불변. 필수/nullable·JSON media type·OpenAPI 정수·상한·실제 응답 카탈로그 | BidPolicyValidationTest, AdminBidPolicyControllerTest, BidPolicyHttpIntegrationTest, ReservePriceContractTest |
+| curl | bootRun + Compose MySQL에서 조회·v2 등록·기존 값 보존·필드 오류·401/403·OpenAPI 등 17항목 PASS | `curl-checks.json`, 개별 JSON, `curl-checks.ps1` |
+| 모듈·마이그레이션 | engine JAR의 jdeps 결과 java.base만 참조. V1~V5 Git diff 없음. 기존 local DB에 V6 적용·기동 확인 | `engine-runtime-dependencies.txt`, `bootRun.log`, Git diff |
+| GEN | 실제 `/v3/api-docs`에서 Orval 8.45.0 생성·typecheck PASS. 필수 tiers, 정수 상한, 작성자 nullable 타입 확인 | `gen-api.log`, `gen-typecheck.log`, `2252681` |
+| FE | lint·typecheck·build PASS. FE 진입 뒤 backend 소스는 `065f600`과 동일 | `fe-lint.log`, `fe-typecheck.log`, `fe-build.log`, Git diff |
+| 증거 검사 | 기존 CI JUnit 리포트 검증기 PASS. Git 추적·비무시 파일과 이번 작업의 공개 가능한 로그·스크립트 324파일에서 실제 검증용 비밀값 5개 일치 0 | `ci-report-verifier.log`, `credential-scan.json`. `.local` 자격 파일·스크립트는 공개 검사 대상에서 제외 |
+
+### 실제 화면 검증
+
+Chrome의 새 m105 세션에서 실제 bootRun·Vite·MySQL로 실행했다. 합성 성공·목록 응답을 사용하지 않았다. 네트워크 실패·유한 지연을 주입한 검사는 각각 후크를 제거하고 실제 응답으로 복구했다.
+
+| 시나리오 | 결과 | 증거 |
+|---|---|---|
+| 로그인 복귀·기존 정책 | 익명 A-05 진입 → ADMIN 로그인 → 원래 A-05 복귀. 시드 v1·curl v2와 메뉴 표시 | `ui-admin-login.log`, `admin-initial-desktop.png` |
+| 필드 오류·구간 편집 | 첫 하한·배수·상한·중복 오류 표시, 잘못된 폼 POST 0건. 구간 추가·삭제 확인 | `ui-admin-register.log`, `duplicate-field-error.png` |
+| 실제 등록·중복 클릭 | POST 전 1.5초 지연만 적용. 더블클릭에도 POST 1건·실제 201/v3·v1/v2 보존·목록 재조회 | `ui-admin-register.log`, `register-pending.png`, `registered-desktop.png` |
+| 로딩·오류·복구 | 실제 GET 지연으로 로딩 표시. 연결 실패 뒤 실제 GET으로 복구. POST 연결 실패는 1번만 시도하고 안내·재조회, 버전 추가 없음 | `ui-states.log`, `list-loading.png`, `list-network-error.png`, `register-network-error.png` |
+| 로그아웃 중 늦은 응답 | 실제 서버가 v4 커밋·201 생성한 뒤 원본 응답만 보류. 로그아웃 후 전달해도 익명 홈·메뉴 제거 유지 | `ui-logout-during-registration.log`, `logout-late-response.png` |
+| ADMIN → USER | USER 메뉴 없음·A-05 직접 URL 차단·정책 요청 0건·이전 정책 캐시 비노출 | `ui-user-guard.log`, `user-direct-url-denied.png` |
+| 화면·저장소 | 1440×1050·390×844 PNG를 직접 열어 확인. 모바일 문서 폭=390. 상태 검사 구간 uncaught pageerror 0, local/sessionStorage 키 0 | `registered-desktop.png`, `registered-mobile.png`, `ui-states.log` |
+
+정상 DB는 v1을 항상 시드하므로 실제 빈 정책 목록 화면은 **NOT_RUN**이다. 빈 상태 분기는 구현했지만 이를 검증하려고 시드나 기존 정책을 삭제하지 않았다. 초기 인증 Refresh 401·의도한 연결 실패는 콘솔에 남으므로 모든 콘솔 항목이 0이라는 뜻은 아니다.
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 근거 |
+|---|---|---|
+| AC-08-1 | PASS | 9,999/10,000/99,999/100,000 → 10,999/20,000/109,999/125,000. engine 단위·실제 DB 정책 변환 검사 |
+| AC-08-3 이번 범위 | PASS | 현재가로 시작가 50,000을 넣으면 첫 입찰 금액 60,000. 실제 Lot 시작·입찰 경로는 M2 후속 |
+| 잘못된 정책 400(fields) | PASS | 필드 경로·reason, 안전 정수 초과·형식·정렬·배수·누락을 MVC/HTTP/curl로 확인, DB 불변 |
+| 등록하면 버전 +1 | PASS | 실제 HTTP·curl·화면 등록과 작성자/시각/구간 저장 확인 |
+| 기존 정책·구간 불변 | PASS | 순차·동시 등록 전후 모든 기존 컬럼 raw SQL 비교 |
+| 두 운영자의 동시 등록 | PASS | 최종 clean build의 두 JVM 합계 1,000라운드에서 매번 201 두 개·연속 고유 버전·작성자 일치 |
+| A-05 | PASS | 목록·구간 편집·등록·권한·로딩/오류/복구·중복 제출·계정 전환·모바일 실제 확인. 빈 목록은 위 NOT_RUN |
+| AC-08-2 | NOT_RUN — 후속 | TASKS M1-05 설명대로 회차 시작·입찰이 있는 M2-02·M2-06에서 검증 |
+
+### 재현 중 확인한 사항
+
+- 최초 curl은 이전 동일 checkout 앱 PID에 연결되어 새 경로 404를 받았다. 프로세스의 checkout·메인 클래스를 확인해 종료하고 최신 bootRun을 기동한 뒤 17항목을 다시 통과했다. 초기 404를 기능 PASS에 포함하지 않는다.
+- 최초 jdeps의 잘못된 `--summary` 옵션은 실패했다. 올바른 `-s`로 실행한 결과만 모듈 증거로 기록했다.
+- 최종 clean 전에 최신 bootRun을 종료해 Windows의 engine JAR 잠금을 해제했다. clean·컴파일이 끝난 뒤 같은 소스를 기동해 화면 검증을 했다.
+
+### 직접 확인하는 방법
+
+기존 이 checkout의 bootRun을 종료한 뒤 실행한다. JDK·Docker·ADMIN 시드는 [DEPLOY](DEPLOY.md)의 로컬 절차를 따른다. JWT 키·로그인 비밀번호는 환경변수·개인 로컬 설정으로 공급하며 출력·커밋하지 않는다.
+
+```powershell
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+Set-Location C:\Users\jitin81\Documents\dev\lab\four-lane-auction\backend
+.\gradlew.bat clean build
+# 정책 경합만: .\gradlew.bat :app:test --tests 'com.fourlane.auction.policy.BidPolicyConcurrencyTest'
+Set-Location C:\Users\jitin81\Documents\dev\lab\four-lane-auction\frontend
+npm run lint
+npm run typecheck
+npm run build
+```
+
+루트에서 `docker compose up -d mysql`, backend에서 JWT_SECRET_BASE64를 설정해 `./gradlew.bat :app:bootRun`, frontend에서 `npm run dev`로 실행한다. 이번 로컬 검증 DB의 v1~v4는 실제 API·화면 입력으로 남아 있다.
+
+1. ADMIN으로 `http://127.0.0.1:5173/#/admin/bid-policies`에 로그인해 버전 내림차순과 최신 배지를 확인한다.
+2. 첫 하한 0을 바꾸거나 호가 단위 1,001을 넣으면 필드 오류가 보이고 POST가 발생하지 않는다.
+3. 구간을 추가·삭제하고 유효한 새 버전을 등록한다. 새 버전과 이전 버전의 구간이 함께 보이며 이전 값은 유지된다.
+4. USER로 전환하면 메뉴가 사라지고 직접 URL도 차단된다. 서버 권한은 아래 curl로 확인한다.
+
+로그인 응답 Access Token을 `$ADMIN`, `$USER1`에 두고 실행한다. 아래 POST는 실제 새 버전을 추가한다. `valid-policy.json`은 로컬 증거 파일이며 다른 환경에서는 같은 형식의 JSON 파일을 만든다.
+
+```powershell
+$API = 'http://127.0.0.1:8080'
+Set-Location C:\Users\jitin81\Documents\dev\lab\four-lane-auction
+curl.exe -i "$API/api/admin/bid-policies" -H "Authorization: Bearer $ADMIN"
+curl.exe -i -X POST "$API/api/admin/bid-policies" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' --data-binary '@output/m1-05/valid-policy.json'
+# 201, 이전 최대 버전 +1
+curl.exe -i "$API/api/admin/bid-policies" -H "Authorization: Bearer $USER1"
+# 403 FORBIDDEN
+curl.exe -i "$API/api/admin/bid-policies"
+# 401 UNAUTHENTICATED
+```
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 고정 카운터 행을 잠가 두 등록이 같은 번호를 읽지 못하게 하고, 기존 version UNIQUE도 유지한다. 모든 등록 경로가 같은 카운터를 먼저 잠가야 한다. 우회 SQL·카운터 직접 변경·트랜잭션 분리는 보장을 깨뜨린다.
+- 카운터·정책·구간을 같은 트랜잭션으로 묶어 반쪽 정책과 롤백 뒤 버전 소모를 막는다. policyId의 AUTO_INCREMENT 빈 번호와 version의 연속성은 별개다. DB 장애·락 타임아웃·버전 소진은 일반 500이며 정상 경합의 201 보장과 구분한다.
+- 잠금 대기는 커넥션을 점유한다. 커밋 후 응답이 유실되면 등록 성공 여부를 모를 수 있다. 정책 등록에는 멱등 키가 없으므로 자동 재등록하지 않고 목록을 확인한다.
+- Clock은 잠금 획득 후 한 번 읽는다. 시계 역행은 createdAt을 역행시킬 수 있으나 목록은 버전 순서다. 카운터는 시각을 사용하지 않는다. 레인 시계 점프 OQ-35·타이머 선택은 이번에 정하지 않았다.
+- JS 안전 정수 상한은 정책 JSON의 정밀도 보존용이다. engine의 long 덧셈 overflow 검출을 실제 입찰 금액 끝단 정책으로 해석하지 않는다. 그 처리는 M2-06 후속이다.
+- 후속: M2-02·M2-06의 AC-08-2와 실제 첫 입찰, 기존 M3-07 trade FK, 기존 다른 작업의 후속은 그대로 유지한다. CHALLENGES 후보를 선택하지 않았다.
+- **NOT_RUN:** 실제 DB 커밋 ACK 유실·DB 네트워크 단절·전원 장애·락 타임아웃 장애 주입, 정상 DB의 빈 정책 화면, 운영 HTTPS/TLS·AWS·배포·부하/성능·경매 완주. beforeCommit·CHECK 주입·브라우저 원본 응답 지연을 이 증거로 바꾸어 쓰지 않는다.
+
 ## M1-04 출품 검수
 
 - 작업일: 2026-10-28 (Asia/Seoul).
