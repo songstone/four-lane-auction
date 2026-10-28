@@ -26,7 +26,10 @@ public class ItemQueryService {
         String next = rows.size() > size ? cursors.encode(sellerId, page.getLast().getCreatedAt(), page.getLast().getItemId()) : null;
         return new Result(page.stream().map(row -> new ItemView(row.getItemId(), row.getName(),
                 "/api/images/" + row.getStorageKey(), row.getStartPrice(), row.getReviewStatus(),
-                row.getRejectReason(), row.getReviewedAt(), row.getCreatedAt())).toList(), next);
+                row.getRejectReason(), row.getReviewedAt(), row.getCreatedAt(), row.getStage(),
+                row.getLotId() == null || !List.of("SCHEDULED", "ON_AUCTION", "SOLD", "UNSOLD").contains(row.getStage()) ? null :
+                    new ItemView.CurrentLot(row.getLotId(), row.getSessionId(), row.getLaneNo(), row.getSeqNo(),
+                        row.getLotStatus(), row.getScheduledStartAt(), row.getFinalPrice(), null))).toList(), next);
     }
     @Transactional(readOnly = true)
     public Image image(String key) {

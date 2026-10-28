@@ -84,6 +84,11 @@ class ReservePriceContractTest extends ItemTestSupport {
         catalog.rest("POST","/api/admin/sessions","ANONYMOUS",401,()->mvc.perform(post("/api/admin/sessions").contentType("application/json").content(sessionInput)).andReturn());
         catalog.rest("POST","/api/admin/sessions","USER",403,()->mvc.perform(post("/api/admin/sessions").header("Authorization",owner).contentType("application/json").content(sessionInput)).andReturn());
         catalog.rest("POST","/api/admin/sessions","ADMIN_INVALID",400,()->mvc.perform(post("/api/admin/sessions").header("Authorization",administrator).contentType("application/json").content("{}")).andReturn());
+        String lineupPath="/api/admin/sessions/"+sessionId+"/lanes/1/lots";
+        catalog.rest("PUT","/api/admin/sessions/{sessionId}/lanes/{laneNo}/lots","ADMIN",200,()->mvc.perform(put(lineupPath).header("Authorization",administrator).contentType("application/json").content("{\"itemIds\":["+reviewId+"]}")).andReturn());
+        catalog.rest("PUT","/api/admin/sessions/{sessionId}/lanes/{laneNo}/lots","USER",403,()->mvc.perform(put(lineupPath).header("Authorization",owner).contentType("application/json").content("{\"itemIds\":[]}")).andReturn());
+        catalog.rest("PUT","/api/admin/sessions/{sessionId}/lanes/{laneNo}/lots","ADMIN_INVALID",400,()->mvc.perform(put(lineupPath).header("Authorization",administrator).contentType("application/json").content("{\"itemIds\":[1,1]}")).andReturn());
+        catalog.rest("GET","/api/me/items","OWNER_AFTER_LINEUP",200,()->mvc.perform(get("/api/me/items").header("Authorization",owner)).andReturn());
         catalog.verifyRestCoverage(mappings);
         // No product lane event producer exists in M1-03. Future producers must supply real captures and type coverage.
         catalog.verifyEventCoverage(Set.of());

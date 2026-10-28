@@ -31,4 +31,9 @@ public class SessionLot {
     @Column(name="unsold_reason",length=20) private String unsoldReason;
     @Column(name="updated_at",nullable=false,columnDefinition="DATETIME(3)") private java.time.Instant updatedAt;
     protected SessionLot() {}
+    public SessionLot(long laneId, long itemId, int seqNo, long startPrice, long reservePrice, java.time.Instant at) {
+        this.laneId = laneId; this.itemId = itemId; this.seqNo = seqNo; status = "PENDING";
+        this.startPrice = startPrice; this.reservePrice = reservePrice; currentPrice = startPrice;
+        bidCount = 0; createdAt = at; updatedAt = at;
+    }
 }

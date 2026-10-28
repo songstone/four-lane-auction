@@ -17,11 +17,14 @@ public record AdminSessionResponse(Session session,boolean startable,List<Intege
     public record Lane(long laneId,int laneNo,String laneStatus,List<Lot> lots){}
     @Schema(name="AdminSessionLot",requiredProperties={"lotId","seqNo","itemId","name","imageUrl","startPrice","sellerNickname","status"})
     public record Lot(long lotId,int seqNo,long itemId,String name,String imageUrl,long startPrice,String sellerNickname,String status){}
+    public static Lane lane(AdminSessionView.Lane l) {
+        return new Lane(l.laneId(), l.laneNo(), l.laneStatus(), l.lots().stream()
+            .map(o -> new Lot(o.lotId(), o.seqNo(), o.itemId(), o.name(), o.imageUrl(), o.startPrice(), o.sellerNickname(), o.status())).toList());
+    }
     public static AdminSessionResponse from(AdminSessionView v){
         var s=v.session();var t=s.timing();
         return new AdminSessionResponse(new Session(s.sessionId(),s.status(),s.laneCount(),s.scheduledStartAt(),s.startedAt(),s.finishedAt(),
             new Timing(t.firstBidWaitMs(),t.softCloseMs(),t.lotGapMs(),t.resumeMinMs()),s.bidPolicyVersion()),v.startable(),v.emptyLaneNos(),
-            v.lanes().stream().map(l->new Lane(l.laneId(),l.laneNo(),l.laneStatus(),l.lots().stream()
-                .map(o->new Lot(o.lotId(),o.seqNo(),o.itemId(),o.name(),o.imageUrl(),o.startPrice(),o.sellerNickname(),o.status())).toList())).toList());
+            v.lanes().stream().map(AdminSessionResponse::lane).toList());
     }
 }
