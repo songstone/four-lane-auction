@@ -390,6 +390,7 @@ erDiagram
 | `V4__auction.sql` | `auction_session`, `lane`, `lot`, `lane_transition` | 2~3주차 |
 | `V5__member_warning.sql` (실제 적용, M1-01) | `member_warning`. trade FK는 M3-07에서 추가 | M1-01 |
 | `V6__bid_policy_version_counter.sql` (M1-05 승인) | 정책 등록 전용 singleton 카운터. 기존 최대 버전으로 초기화 | M1-05 |
+| `V7__session_timing_bounds.sql` (M1-06 승인) | OQ-14의 네 시간 값 1,000~60,000ms CHECK 보강 | M1-06 |
 | `V5__bid.sql` (초기 계획 번호, 실제 번호 아님) | `bid`, `idempotency_record` | 4주차 |
 | `V6__audit_log.sql` (초기 계획 번호) | `audit_log` (S-03) | 5주차 |
 | `V7__trade.sql` (초기 계획 번호) | `trade`, `payment`, 기존 `member_warning`에 trade FK 추가 | 6주차 |
