@@ -24,6 +24,8 @@ import type {
   LoginRequest,
   MemberResponse,
   MyItemListResponse,
+  PublicLotDetail,
+  PublicSessionResponse,
   SessionCreateRequest,
   SessionLineupRequest,
   SessionListResponse,
@@ -1092,6 +1094,71 @@ export const listSessions = async (params: ListSessionsParams, options?: Request
 
 
 
+export type getPublicSessionResponse200 = {
+  data: PublicSessionResponse
+  status: 200
+}
+
+export type getPublicSessionResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type getPublicSessionResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type getPublicSessionResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type getPublicSessionResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type getPublicSessionResponseSuccess = (getPublicSessionResponse200) & {
+  headers: Headers;
+};
+export type getPublicSessionResponseError = (getPublicSessionResponse400 | getPublicSessionResponse401 | getPublicSessionResponse404 | getPublicSessionResponse500) & {
+  headers: Headers;
+};
+
+export type getPublicSessionResponse = (getPublicSessionResponseSuccess | getPublicSessionResponseError)
+
+export const getGetPublicSessionUrl = (sessionId: number,) => {
+
+
+
+
+  return `/api/sessions/${sessionId}`
+}
+
+/**
+ * @summary 예정 회차 관전 상세
+ */
+export const getPublicSession = async (sessionId: number, options?: RequestInit): Promise<getPublicSessionResponse> => {
+
+  const res = await fetch(getGetPublicSessionUrl(sessionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getPublicSessionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getPublicSessionResponse
+}
+
+
+
 export type getMeResponse200 = {
   data: MemberResponse
   status: 200
@@ -1210,6 +1277,71 @@ export const listMyItems = async (params?: ListMyItemsParams, options?: RequestI
 
   const data: listMyItemsResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as listMyItemsResponse
+}
+
+
+
+export type getPublicLotResponse200 = {
+  data: PublicLotDetail
+  status: 200
+}
+
+export type getPublicLotResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type getPublicLotResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type getPublicLotResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type getPublicLotResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type getPublicLotResponseSuccess = (getPublicLotResponse200) & {
+  headers: Headers;
+};
+export type getPublicLotResponseError = (getPublicLotResponse400 | getPublicLotResponse401 | getPublicLotResponse404 | getPublicLotResponse500) & {
+  headers: Headers;
+};
+
+export type getPublicLotResponse = (getPublicLotResponseSuccess | getPublicLotResponseError)
+
+export const getGetPublicLotUrl = (lotId: number,) => {
+
+
+
+
+  return `/api/lots/${lotId}`
+}
+
+/**
+ * @summary 공개 Lot 상세
+ */
+export const getPublicLot = async (lotId: number, options?: RequestInit): Promise<getPublicLotResponse> => {
+
+  const res = await fetch(getGetPublicLotUrl(lotId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getPublicLotResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getPublicLotResponse
 }
 
 

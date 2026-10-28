@@ -1,5 +1,107 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-08 예정 회차 관전 화면
+
+- 작업일: 2026-10-28 (Asia/Seoul).
+- 상태: **완료 (M1-08 로컬 수용 기준·아래 실제 실행 증거 기준)**. BE → GEN → FE → 통합과 최종 빌드를 마쳤다. 사용자 승인 범위로 push·dev 대상 PR을 진행하며 원격 CI 결과는 PR·완료 보고에서 구분한다. 머지는 별도 지시가 필요하다.
+- 원본: TASKS 0장·M1-08·9장, PRD P-03 예정 모드·AC-02-6, API 4.2·4.3·4.4, EVENTS 1.1·6.1·6.7·7, ARCH 3·4·5.7·부록 A, CH-01, ADR-001~012, PROGRESS M0-03·M1-02/03/06/07 후속.
+- 시작 SHA: `8cc1e523781af71ed739ebfd755cc1ff3e501a2c`. fetch 후 dev=origin/dev·clean, 선행 M1-07 PR #10 ancestry 확인 후 `feature/M1-08-scheduled-session-view` 생성.
+- 승인: 사용자 ①~⑥ 권장안과 비예정 회차 상세 임시 오류 처리, 구현·검증·기록·목적별 커밋·push·dev 대상 PR 생성을 승인했다. 이 세션은 M1-08 하나만 진행한다.
+- 결정 기록: [ADR-013](adr/ADR-013-M1-08-scheduled-session-view.md), PRD OQ-22 부분 결정, API 0.10·EVENTS 0.4, CH-01 B1·ARCH 부록 A의 예정 회차 적용 표시. 새 의존성·Flyway 없음. V1~V7 유지, 다음 번호 V8.
+- 커밋: `d84acdf` 결정·계약, `b7b7c31` BE, `58d37e7` BE 계약·일관성 테스트, `f192f41` GEN, `1a7e3c9` FE. 최종 기록은 별도 docs 커밋이다.
+
+### 승인한 구현과 경계
+
+- 공개 회차 상세는 SCHEDULED만 제공한다. header·lineup·READY snapshot·로그인 시 me.myLotIds를 application readOnly REPEATABLE_READ 트랜잭션의 같은 읽기 시점에서 조립한다. 행 잠금은 사용하지 않고 잘못된 외부 격리수준·쓰기 TX 합류는 실패시킨다.
+- Clock 1회의 serverTime과 부팅당 공통 무작위 epoch, seq=0, heartbeatIntervalMs=5000을 제공한다. 편성된 레인의 첫 PENDING Lot은 position=1·remainingLots=편성 수-1, 빈 레인은 lot=null·position/remainingLots=0이다. READY 비컨을 발행하지 않는다.
+- 공개 프로젝션/DTO에는 최저 낙찰가·판매자 정보·유찰 사유가 없다. 내부 sellerId는 myLotIds 계산에만 쓴다. READY/PENDING reserveNotMet=false는 승인한 부분 결정이며 진행 중 OQ-22는 미결이다. Lot의 finalPrice는 SOLD 또는 입찰 있는 UNSOLD일 때만 현재가다.
+- 상세는 60초, 홈은 기존 30초 재조회다. 화면 복귀·online·수동 재조회도 제공한다. 서버 시각은 기존 B1(실제 수신 performance.now, 최근 60초 표본 최댓값)을 재사용하며 캐시 읽기는 새 표본이 아니다. 표본 만료는 `시작 시각 확인 중`, 0초는 `곧 시작합니다`, 10초 뒤는 `운영자 시작 대기 중`이다.
+- USER는 앱에서 연결·개인 큐를 유지한다. 익명·ADMIN은 P-03에서만 연결하며 A-02/A-03에서는 연결하지 않는다. 상태를 관찰하는 홈 배지는 연결을 생성하지 않는다. USER 외 홈 배지는 `관전 화면에서 연결`이다. P-03을 떠날 때 레인 UNSUBSCRIBE 후 소유권을 해제하고, 마지막 소유자 또는 신원 변경 시 이전 소켓 종료를 기다린다.
+- 회차 상세로 laneId를 얻고 실제 SUBSCRIBE 뒤 상세를 다시 받아 기준으로 삼는다. 회차 캐시는 ['session', id], 레인 상태는 자동 조회 없는 ['lane', id]에 두며 applySnapshot만 바꾼다. READY 편성 교체의 같은 seq=0도 전체 교체하고, 세대·신원 검사와 요청 취소로 이전 화면 응답을 막는다. 계정 변경 시 개인화 회차·레인 캐시를 비운다.
+- Lot 모달은 열 때 조회하고 자동 조회하지 않는다. 다음 편성에서 선택한 Lot이 사라지면 변경 안내와 재선택을 요구한다. 직접 조회의 404는 LOT_NOT_FOUND다. P-03에서 로그인하면 원래 회차로 돌아오도록 안전한 returnTo 허용 목록과 현재 경로 전달을 확장했다.
+- **승인한 임시 제한:** RUNNING/FINISHED 상세는 500 INTERNAL_ERROR이며 홈 관전 링크는 예정 카드에만 있다. 진행/종료 상세는 M2-04, 이벤트 적용·버퍼 처리·갭/비컨 복구·첫 LOT_STARTED 지연 재조회와 실시간 전환은 M2-05다. 이번에는 실제 구독·재조회·해제까지 구현했다.
+
+### 단계별 실제 실행 증거
+
+기본 증거 경로는 `output/m1-08/`, 화면 증거는 `output/playwright/m1-08/`다. 로그·JSON·PNG는 ignored 로컬 산출물이다.
+
+| 단계 | 실제 결과 | 증거 |
+|---|---|---|
+| BE 게이트 | `gradlew test` PASS. app 271개 실행·실패/오류/skip 0, engine 10개는 이 단계 UP-TO-DATE | `be-all-tests.log`, `be-test-summary.json`, `be-test-results/` |
+| 실제 HTTP | curl 기록 41요청(200×16, 201×22, 401×1, 404×2)과 별도 multipart 업로드 5건. 실제 API로 물품 5개·이미지 각 2개·회차 22개를 준비 | `curl-results.json`, `fixtures.json`, 공개 응답 JSON. 로그인·요청 비밀값은 ignored `.local` 파일 |
+| GEN | 실행 중인 BE OpenAPI에서 Orval 8.45.0 생성·typecheck PASS. 필수 nullable me/lotInfo/state.lot 타입 확인 | `gen-api.log`, `gen-typecheck.log`, `openapi.json`, 커밋 f192f41 |
+| FE | lint·typecheck·build PASS. FE 진입 이후 backend source tree는 f192f41과 동일 | `fe-lint.log`, `fe-typecheck.log`, `fe-build.log`, `git diff f192f41 -- backend` |
+| 최종 curl | session #7 200, 현재 lot #21 200, 없는 회차 404 SESSION_NOT_FOUND, 삭제 lot #14 404 LOT_NOT_FOUND | `final-curl.json`, `final-public-session.json`, `final-public-lot.json`, `final-missing-session.json`, `final-old-lot.json` |
+| 최종 BE | `clean build` PASS, 19분 28초·16태스크 모두 실행. UTC 281개(app 271+engine 10), Seoul app 271개, 실패/오류/skip 0. verifyTimeSources 운영 139파일·위반 0, JUnit XML 집계 검증기 PASS | `clean-build.log`, `test-summary.json`, `ci-report-verifier.log`, `test-results/` |
+| 비밀값 검사 | 추적·비무시 파일 368개에서 실제 검증 자격 정보·Access Token 4개 값 일치 0건. git diff --check PASS | `credential-scan.json` |
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 실제 근거 |
+|---|---|---|
+| 레인 수만큼 미리보기·정확한 순번 | PASS | PublicSessionHttpIntegrationTest의 1~4 레인·빈 레인 검사, 실제 회차 #7의 4개 레인·순번·빈 레인 화면. `viewer-snapshot.log`, `viewer-desktop.png` |
+| 운영자 편성 변경을 다음 주기에 반영 | PASS | ADMIN 화면의 실제 전체 편성 저장 200, 비로그인 화면의 실제 약 60초 GET 주기에서 새 Lot ID·순서 반영. `reorder-save.log` 07:41:58.440Z, 다음 GET 07:42:55대에 새 순서 수신. `reorder-after-cycle.log` |
+| 두 공개 응답의 최저 낙찰가 계약 테스트 | PASS | ReservePriceContractTest의 실제 HTTP 카탈로그에 두 경로·익명/본인/다른 USER/ADMIN·오류 등록. Lot에 917431000 저장을 확인하고 공개 JSON의 필드·값을 재귀 검사. ADMIN 공개 조회에도 예외 없음 |
+| 없는 회차 404·화면 오류 | PASS | PublicSessionControllerTest·PublicSessionHttpIntegrationTest, 실제 curl 404 SESSION_NOT_FOUND와 오류/재시도 화면. `errors-mobile-final.log`, `missing-session.png` |
+| Lot 상세·이미지·설명·삭제 경계 | PASS | 실제 API로 등록한 두 이미지·설명·시작가를 모달에서 확인. 운영자 삭제 후 다음 주기에 변경 안내. 기존 Lot 직접 curl 404. `modal.log`, `lot-modal.png`, `poll-proof.log` |
+| ADR-003 홈 연결 예외 해소 | PASS | 익명 홈 0 → P-03 1 → 레인 4개 해제·홈 0. USER 홈/관전/이탈 1·개인 큐 유지, 로그아웃 0. ADMIN 홈·A-02/A-03 0, P-03 1·개인 큐 없음, 이탈 0. `home-before-more.log`, `anon-leave.log`, `user-lifecycle.log`, `admin-lifecycle-final.log` |
+| M0-03 데이터 있는 카드·더 보기 | PASS | 실제 API 생성 데이터로 홈 20개→28개, 중복 없이 다음 커서 조회·더 보기 소멸. `home-before-more.log`, `home-after-more.log` |
+| 카운트다운 | PASS | 실제 PATCH로 예정 시각을 약 8초 뒤로 변경하고 0초·10초 후 문구 확인 후 원래 시각 복구. Date.now ±300000ms 주입에도 남은 시간은 1초 이내 진행. `clock-zero-ten.log`, `clock-cache.log`, `clock-restore.log` |
+| 읽기 시점 일관성 | PASS | PublicSessionReadConsistencyIntegrationTest: header 조회 직후 실제 편성 교체 커밋을 끼워 넣는 200라운드에서 응답 내부는 이전 읽기 시점, 다음 요청은 새 편성. 외부 READ_COMMITTED TX 합류 거절 |
+
+### 실제 화면 검증과 증거의 범위
+
+- clean 검증을 위해 종료했던 기본 포트 앱도 현재 소스로 8080/8081에 복구했다(`bootRun-default.log`). 검증용 앱은 28080/28081에 별도로 실행 중이다.
+- 실제 Compose MySQL + bootRun(28080·관리 28081) + Vite(25173), Chrome/Playwright CLI를 사용했다. 데이터는 등록·이미지 업로드·검수·회차 생성·편성 API로 만들었으며 성공 JSON을 합성하지 않았다. 스크린샷의 작은 단색 이미지는 업로드 검증용 PNG다.
+- `viewer-frames.log`: CONNECTED, 레인 4개 SUBSCRIBE, 그 이후 상세 GET 순서를 수신 시각으로 대조했다. `anon-leave.log`는 UNSUBSCRIBE 4개 → DISCONNECT·활성 0, 관측 구간 동시 소켓 최대 1이다. Vite 개발 소켓은 제외한다. USER·ADMIN도 실제 프레임과 socket 수로 확인했다.
+- `poll-proof.log`: 편성에서 제거된 Lot을 열어 둔 모달이 다음 실제 재조회 후 변경 안내로 바뀌었다. seq=0인 새 READY 스냅샷도 반영됐다. `clock-cache.log`의 동률 교체·낮은 seq 무시·새 epoch 교체는 제품 함수를 별도 QueryClient에서 실행한 보조 검사이며 실제 이벤트 수신 증거가 아니다.
+- `errors-mobile-final.log`: 실제 요청 전달을 1.5초 지연해 로딩을 확인했다. 전송 실패 주입에서는 마지막 편성과 오류를 함께 표시하고 실제 200 재조회로 복구했다. 모바일 viewport/document 폭은 390/390px이다. `viewer-mobile.png`를 직접 확인했다.
+- `late-request.log`: #7 조회를 지연한 채 #8로 이동하고 원본 요청을 끝내도 #8의 한 개 빈 레인을 유지했다. `clock-cache.log`의 시간 표본 만료 검사는 제품 ServerClock의 통제 입력이며 OS 시계 변경·장시간 백그라운드 제한 측정이 아니다.
+- 실제 서버 재시작 전후 같은 편성의 epoch 변경을 HTTP로 확인했다(`public-anonymous.json`, `public-after-restart.json`). 최종 clean build 후 서버를 재시작한 추가 검사에서는 페이지 새로고침 없이 CONNECTED 5→6, 레인 재구독 4개 뒤 상세 GET·화면 복구·동시 소켓 최대 1을 확인했다(`reconnect-before.log`, `reconnect-after.log`, `reconnect-summary.json`, `before-reconnect.json`, `after-reconnect.json`). 실행 중 레인 이벤트·비컨·경매 엔진 복구 증거는 아니다.
+- 실제 탭 가시성 복귀 확인은 **NOT_RUN**이다. 격리 브라우저에서 새 탭을 열어도 기존 탭이 visible로 남아 hidden→visible 전환을 만들지 못했다(`foreground.log`). visibilitychange/online 처리 코드는 구현했지만 이 결과를 실제 화면 복귀 검증으로 기록하지 않는다.
+- 최종 격리 브라우저 검사들의 uncaught 오류 수는 0이다. 익명 초기 Refresh 401, 실제 404·주입 전송 실패, 개발 중 HMR 효과 순서 변경 경고는 별도로 관측했다. 최종 확인은 새 컨텍스트/전체 재조회 후 진행했다.
+- 처음 집중 BE 테스트 2건은 CHECK 제약을 충족하지 않는 fixture가 원인이었다. winner/lastBid/시작 시각/고정 정책을 갖춘 fixture로 고친 뒤 전체 테스트를 통과했다. 테스트 삭제·skip은 하지 않았다.
+- 검증 스크립트의 CLI 콜백 인자·PowerShell 인코딩·실제 PUT 경로·route 정리 대기 문제를 수정했다. 최초 편성 저장은 실제 성공했지만 잘못된 응답 경로 필터가 대기 시간 초과를 냈으며, 올바른 경로로 별도 재정렬 200과 다음 주기 반영을 재확인했다. about:blank로 바뀐 브라우저의 검사도 새 격리 세션에서 다시 수행했다. 이들 실패를 PASS 증거로 사용하지 않았다.
+- [FE]에서 backend를 수정하지 않았다. UI 정리 중 레인 해제가 소켓 종료보다 먼저 일어나도록 effect 정리 순서를 바꾸고, P-03 로그인 복귀 경로를 연동했다. 이후 lint·typecheck·build와 브라우저 검사를 통과했다.
+
+### 직접 확인하는 방법
+
+```powershell
+# 저장소 루트. clean 전에 이 checkout의 bootRun을 종료한다.
+cd backend
+.\gradlew.bat clean build
+cd ../frontend
+npm run lint
+npm run typecheck
+npm run build
+```
+
+1. 로컬 MySQL을 `docker compose up -d mysql`로 실행한다. 기존 로컬 JWT 설정으로 backend에서 `.\gradlew.bat :app:bootRun`, 별도 frontend 터미널에서 `npm run dev`를 실행한다. Compose app 서비스는 띄우지 않는다.
+2. 홈의 예정 카드에서 **예정 회차 관전**을 누른다. 현재 검증 주소는 `http://127.0.0.1:25173/#/sessions/7`이다. 네 레인·순번·빈 레인과 시작까지 남은 시간을 확인한다. 물품을 누르면 이미지·설명·시작가 모달이 열린다.
+3. 다른 브라우저의 ADMIN으로 회차 관리 → #7 설정 → 회차 편성에 들어간다. 순서를 바꾸거나 제거해 저장한 뒤, 비로그인 관전 화면에서 최대 다음 60초 조회를 기다린다. 열려 있던 이전 Lot은 변경 안내로 바뀌며 새 편성에서 다시 선택한다.
+4. 개발자 도구 Network의 `/ws`에서 구독 뒤 GET·이탈 시 UNSUBSCRIBE를 확인한다. 익명/ADMIN 홈은 연결이 없고 USER는 개인 큐 연결이 유지된다. 로그인·로그아웃 전후 내 물품 표시가 남지 않는지도 확인한다.
+5. 홈은 20개 뒤 더 보기로 이어진다. `#/sessions/9999999`는 오류와 다시 조회를 보여 준다. Network를 끊고 재조회하면 마지막 편성을 유지하며 오류를 표시한다. 복구 후 다시 조회하면 정상화된다.
+
+```powershell
+$API='http://127.0.0.1:28080' # 기본 bootRun은 8080
+curl.exe -i "$API/api/sessions/7"
+# 응답의 현재 lanes[].lineup[].lotId를 사용한다. 편성 저장은 lotId를 교체한다.
+curl.exe -i "$API/api/lots/21"
+curl.exe -i "$API/api/sessions/9999999"
+curl.exe -i "$API/api/lots/14" # 이번 검증에서 교체된 ID, 404 LOT_NOT_FOUND
+```
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 편성 쓰기는 삭제·삽입으로 Lot ID를 교체한다. 조회 중간에 커밋이 끼어도 header와 lineup·myLotIds가 섞이지 않도록 일반 SELECT들을 하나의 REPEATABLE_READ TX에 둔다. TX 분리·READ_COMMITTED 변경·잠금 읽기 혼용은 이 전제를 깨뜨릴 수 있다. 오래 열린 읽기 TX는 MVCC 과거 버전 유지 비용을 높인다.
+- 동률 seq를 무조건 버리면 READY 편성 교체가 사라진다. 반대로 모든 늦은 응답을 허용하면 이전 계정·이전 화면이 새 기준 상태를 덮는다. 동률 전체 교체와 요청 세대/신원 검사·취소를 함께 적용했다. 응답 도착 시 이미 더 새 편성이 있을 수 있으며 다음 주기에 따라잡는다.
+- 시간 표시는 performance.now 기반이므로 브라우저 벽시계 점프에 영향받지 않는다. 네트워크 지연·백그라운드 타이머 제한은 표시와 실제 재조회 도착을 늦출 수 있다. 표본 만료를 숨기지 않으며 카운트다운 0은 서버의 실제 시작이나 경매 결과가 아니다.
+- M2-04: RUNNING/FINISHED 상세의 임시 500 제거·레인 단독 스냅샷·진행 중 OQ-22. M2-05: 실제 이벤트 버퍼/적용·갭/비컨 복구·첫 LOT_STARTED의 0~3초 지연 재조회·진행 화면 전환·A-04 연결. M3-06: 실제 개인 알림. OQ-27 데이터 시드는 M1-10이다.
+- 이번에 새로 정하지 않은 항목: 입찰 락 전략·타이머/엔진·OQ-35 시계 점프·OQ-38 DB/Clock 장애·진행 중 최저가 배지 의미. 기존 결정과 후속 범위를 유지한다.
+- **NOT_RUN:** 실제 경매 시작/완주, 운영 중 이벤트·비컨·갭/재시작 복구, 장시간 백그라운드 제한·OS 시계 변경, 성능/부하·200ms 목표, TLS·AWS·배포. 로컬 HTTP·Testcontainers·브라우저 기능 검증을 이들의 증거로 바꾸어 쓰지 않는다.
+
+---
+
 ## M1-07 회차 편성
 
 - 작업일: 2026-10-28 (Asia/Seoul).
@@ -1273,7 +1375,7 @@ npm run build
 ### 승인한 임시 제한과 후속 작업
 
 - **M1-02 처리 완료 (2026-10-27)**: M0-03 당시의 Authorization 포함 CONNECT 일괄 거절을 제거했다. 공용 Decoder로 유효/만료/위조를 구분하고 Principal·인증 개인 큐·프론트 신원 전환을 구현·검증했다(위 M1-02 절·ADR-007). 아래 M0-03의 실행 증거는 당시 범위 그대로다.
-- **M1-08**: 홈의 익명 STOMP 연결은 M0 진단용 예외다. EVENTS 1.1의 비로그인 연결 시점(관전 화면)에 맞춰 연결 수명을 정리한다.
+- **M1-08 처리 완료 (2026-10-28)**: 홈 진단용 익명 STOMP 예외를 제거했다. USER 앱 연결·익명/ADMIN P-03 연결과 관찰 전용 홈 배지를 구현하고 실제 프레임·이탈 종료를 확인했다. 위 M1-08 절·ADR-013 참고.
 - **M1-06에서 매핑 확장**: M0-03 당시 조회용 부분 매핑·@Immutable이었던 회차·레인·Lot을 쓰기용으로 확장했다. 회차·READY 레인 생성과 회차 설정 수정은 M1-06, Lot 편성·경매 상태 전이는 후속 작업이다. M0-03 당시 증거의 범위는 그대로다.
 
 ### 단계별 실행 증거
@@ -1308,7 +1410,7 @@ Windows Chrome + Playwright CLI에서 실제 Compose MySQL·bootRun·Vite를 연
 | 익명 CONNECT → CONNECTED, SEND·직접 /queue 구독 거절 | PASS | WebSocketStompClient의 실제 연결·ERROR·연결 종료. 브라우저 STOMP CONNECTED 수신도 확인 |
 | 프론트는 생성 클라이언트로만 목록 호출 | PASS | sessionQueries가 생성 listSessions만 호출. Git 소스 검사상 수동 fetch 없음. 실제 브라우저의 같은 출처 /api/sessions 호출 확인 |
 
-API.md·EVENTS.md·TASKS.md 원문은 수정하지 않았다. 진단 API와 테스트 토픽은 추가하지 않았다. M0-03 당시 승인한 임시 제한 중 CONNECT 인증은 후속 M1-02에서 해소했고 홈의 익명 연결 수명은 M1-08에 남아 있다(위 후속 작업·ADR-003).
+M0-03 당시 API.md·EVENTS.md·TASKS.md 원문은 수정하지 않았다. 진단 API와 테스트 토픽은 추가하지 않았다. 당시 임시 제한 중 CONNECT 인증은 후속 M1-02에서, 홈의 익명 연결 수명은 M1-08에서 해소했다(위 후속 작업·ADR-003/013).
 
 ### 직접 확인하는 방법
 
@@ -1345,3 +1447,4 @@ curl.exe -i 'http://127.0.0.1:8080/api/sessions'
 - [BE] → [GEN] → [FE] → [통합] 순서로 수행했다. [GEN]의 media type 오류는 [BE]로 돌아가 수정·검증한 뒤 재생성했다. [FE]에서 backend를 수정하지 않았다. 생성 결과는 별도 커밋에 포함했다.
 - JWT 실제 검증·로그인/개인 큐(M1-02), 관전 화면의 연결 수명 정리(M1-08), 레인 이벤트·비컨·스냅샷 재동기화·경매 엔진·입찰·영속 상태 복구·부하·배포는 **NOT_RUN**이며 이번 완료 범위 밖이다.
 - 데이터가 있는 회차 카드·더 보기의 브라우저 검증은 **NOT_RUN**이다. 상태별 페이지·정렬·Lot 집계는 Testcontainers의 실제 MySQL에서 검증했고, 실제 로컬 DB의 빈 목록을 가짜 회차로 채우지 않았다.
+- **후속 갱신 (M1-08, 2026-10-28)**: 바로 위 NOT_RUN은 M0-03 당시 결과다. M1-08에서 실제 API로 데이터를 만들고 홈 20개→28개·더 보기·예정 카드→관전 이동을 확인했다. 구체적인 로그와 증거 범위는 위 M1-08 절에 기록했다.

@@ -7,10 +7,10 @@ import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { Spinner } from './ui/Spinner';
 
-export function AuthHeader() {
+export function AuthHeader({ route }: { route: string }) {
   const auth = useAuth();
   const logout = useMutation({ mutationFn: signOut });
-  const returnTo = safeReturnTo(window.location.hash.slice(1).split('?')[0] ?? null);
+  const returnTo = safeReturnTo(route);
   const logoutAction = () => { navigate('/'); logout.mutate(); };
   return <div className="border-b border-line bg-surface">
     <nav aria-label="계정 메뉴" className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-3">

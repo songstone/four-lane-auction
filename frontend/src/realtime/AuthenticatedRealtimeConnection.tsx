@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
 import { useAuth } from '../features/auth/useAuth';
-import { subscribeConnection } from './client';
+import { retainConnection } from './client';
 
-/** USER keeps one shared connection even when the home diagnostic is unmounted. */
+/** USER keeps one shared connection and personal queue throughout the app. */
 export function AuthenticatedRealtimeConnection() {
   const { status, member } = useAuth();
   const enabled = status === 'authenticated' && member?.role === 'USER';
   useEffect(() => {
-    if (enabled) return subscribeConnection(() => {});
+    if (enabled) return retainConnection();
   }, [enabled]);
   return null;
 }

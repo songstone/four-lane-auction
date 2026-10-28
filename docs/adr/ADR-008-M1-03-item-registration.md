@@ -44,3 +44,7 @@ GEN 검증 보완: Swagger nullable 객체 참조는 OpenAPI 3.1 `anyOf [Current
 ## M1-07 후속 처리 (2026-10-28)
 
 [ADR-012](ADR-012-M1-07-session-lineup.md)에 따라 편성 응답을 실제 응답 계약 카탈로그에 등록하고, 판매자의 편성 이후 stage·currentLot을 공통 조회식으로 확장했다. 다른 레인·회차 중복 편성과 재출품 가격은 OQ-28 결정에 반영했다. 실제 검증 범위는 PROGRESS M1-07이며 공개 회차/Lot·스냅샷·이벤트 등록과 실제 relist는 기존 후속 작업에 남아 있다.
+
+## M1-08 후속 처리 (2026-10-28)
+
+`GET /api/sessions/{sessionId}`와 `GET /api/lots/{lotId}`를 실제 REST 응답 계약 카탈로그에 등록했다. 익명·판매자 본인·다른 USER·ADMIN의 성공 응답과 오류 응답을 검사하며, 편성한 Lot에 최저가 표식 값이 실제 저장됐는지도 확인한다. 두 공개 경로에는 ADMIN 예외가 없다. READY/PENDING의 `reserveNotMet=false`는 PRD OQ-22·ADR-013의 부분 결정이며 진행 중 배지 의미는 미결이다. 진행/종료 스냅샷과 실제 레인 이벤트 계약 검사는 M2 후속에 남는다.

@@ -18,6 +18,7 @@ const messages: Record<string, string> = {
   IMAGE_NOT_FOUND: '이미지를 찾을 수 없습니다.',
   AUTH_SESSION_CHANGED: '로그인 계정이 바뀌었습니다. 현재 계정으로 다시 확인해 주세요.',
   SESSION_NOT_FOUND: '회차를 찾을 수 없습니다. 목록을 다시 확인해 주세요.',
+  LOT_NOT_FOUND: '편성 물품을 찾을 수 없습니다. 최신 편성에서 다시 선택해 주세요.',
   SESSION_NOT_SCHEDULED: '이미 시작한 회차는 편성이나 설정을 변경할 수 없습니다.',
   SCHEDULED_START_IN_PAST: '예정 시작 시각은 서버의 현재 시각보다 뒤여야 합니다.',
   SESSION_RESULT_UNCONFIRMED: '처리 결과가 불확실하면 다시 제출하기 전에 목록이나 상세를 새로 조회해 주세요.',
