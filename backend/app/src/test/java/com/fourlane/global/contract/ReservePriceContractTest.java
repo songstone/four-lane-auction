@@ -9,6 +9,7 @@ import com.fourlane.support.contract.*;
 import jakarta.servlet.http.Cookie;
 import java.util.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.mock.web.MockMultipartFile;
@@ -68,10 +69,20 @@ class ReservePriceContractTest extends ItemTestSupport {
         catalog.rest("POST", "/api/admin/items/{itemId}/approve", "ADMIN_REPEATED", 422, () -> mvc.perform(post(reviewPath + "/approve").header("Authorization", administrator)).andReturn());
         catalog.rest("POST", "/api/admin/items/{itemId}/reject", "ADMIN_REPEATED", 422, () -> mvc.perform(post(reviewPath + "/reject").header("Authorization", administrator).contentType("application/json").content("{\"reason\":\"확인 불가\"}")).andReturn());
         catalog.rest("POST", "/api/admin/items/{itemId}/reject", "USER", 403, () -> mvc.perform(post(reviewPath + "/reject").header("Authorization", owner).contentType("application/json").content("{\"reason\":\"확인 불가\"}")).andReturn());
+        catalog.rest("GET", "/api/admin/bid-policies", "ADMIN", 200, () -> mvc.perform(get("/api/admin/bid-policies").header("Authorization", administrator)).andReturn());
+        catalog.rest("POST", "/api/admin/bid-policies", "ADMIN", 201, () -> mvc.perform(post("/api/admin/bid-policies").header("Authorization", administrator).contentType("application/json").content("{\"tiers\":[{\"minPrice\":0,\"increment\":2000}]}")).andReturn());
+        catalog.rest("POST", "/api/admin/bid-policies", "ADMIN_INVALID", 400, () -> mvc.perform(post("/api/admin/bid-policies").header("Authorization", administrator).contentType("application/json").content("{\"tiers\":[]}")).andReturn());
+        catalog.rest("GET", "/api/admin/bid-policies", "USER", 403, () -> mvc.perform(get("/api/admin/bid-policies").header("Authorization", owner)).andReturn());
+        catalog.rest("POST", "/api/admin/bid-policies", "ANONYMOUS", 401, () -> mvc.perform(post("/api/admin/bid-policies").contentType("application/json").content("{}")).andReturn());
         catalog.verifyRestCoverage(mappings);
         // No product lane event producer exists in M1-03. Future producers must supply real captures and type coverage.
         catalog.verifyEventCoverage(Set.of());
         catalog.verify(json, Set.of(MARKER));
+    }
+    @AfterEach void removePolicyFixturesBeforeTheSharedMemberCleanup() {
+        jdbc.update("DELETE FROM bid_increment_tier WHERE policy_id <> 1");
+        jdbc.update("DELETE FROM bid_increment_policy WHERE id <> 1");
+        jdbc.update("UPDATE bid_policy_version_counter SET last_version=1 WHERE id=1");
     }
     @Test void detectorRejectsNestedAliasesNumericAndTextLeaksButAllowsBadge() {
         for (String leaked : List.of("{\"nested\":[{\"reservePrice\":null}]}", "{\"reserve_price\":0}",

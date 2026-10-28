@@ -20,6 +20,7 @@ export function AuthHeader() {
           <span>{auth.member.nickname}님</span>
           <Badge>{auth.member.role === 'ADMIN' ? '운영자' : '일반 회원'}</Badge>
           {auth.member.role === 'ADMIN' && <a href="#/admin/items" className="text-sm text-brand">출품 검수</a>}
+          {auth.member.role === 'ADMIN' && <a href="#/admin/bid-policies" className="text-sm text-brand">호가 정책</a>}
           {auth.member.role === 'USER' && <><a href="#/items/new" className="text-sm text-brand">출품 등록</a>
             <a href="#/me/items" className="text-sm text-brand">내 출품 목록</a></>}
           <a href="#/me" className="text-sm text-brand">{auth.member.role === 'ADMIN' ? '운영자 계정' : '내 정보'}</a>

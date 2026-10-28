@@ -24,7 +24,7 @@ export function connectAuthQueryCache(client: QueryClient) {
     if (!member || (previous && previous.memberId !== member.memberId)) {
       void client.cancelQueries({ queryKey: ['myItems'] });
       client.removeQueries({ queryKey: ['myItems'] });
-      for (const key of ['adminItems', 'adminItem']) {
+      for (const key of ['adminItems', 'adminItem', 'adminBidPolicies']) {
         void client.cancelQueries({ queryKey: [key] });
         client.removeQueries({ queryKey: [key] });
       }
