@@ -1,5 +1,122 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-04 출품 검수
+
+- 작업일: 2026-10-28 (Asia/Seoul).
+- 상태: **완료 (M1-04 로컬 수용 기준·아래 실행 증거 기준)**. BE → GEN → FE → 실제 화면 통합과 최종 빌드를 마쳤다. 원격 push·PR 생성은 별도 승인 대기이며 실행하지 않았다.
+- 원본: TASKS 0장·M1-04·9장, PRD M-03·AC-03-1~3·A-01, API 7.1, ARCH 4.4·11·B-7, ADR-001~008과 M1-03 후속.
+- 시작 SHA: `632585e6e82b4ee0334db50c78cc549aafdf83e2`. fetch 후 dev=origin/dev·clean, M1-03 PR #6 포함 확인 후 `feature/M1-04-item-review` 생성.
+- 승인: 사용자 ①은 ADMIN 상세 최저 낙찰가 조회로 변경, 나머지 권장안·변경 파일·검증·로컬 커밋 계획 승인. push·PR 생성은 별도 승인이다.
+- 결정 기록: [ADR-009](adr/ADR-009-M1-04-item-review.md), PRD OQ-54·55, ARCH B-7, API 0.6. 새 의존성·Flyway·EVENTS 변경 없음.
+- 커밋: `7b4bfd7` 정책·계약, `83b84a8` BE, `c08d6b5` GEN, `fa5ab23` FE. 최종 기록은 별도 docs 커밋이다. 원격 push·PR 생성은 미실행이다.
+
+### 승인한 구현과 경계
+
+- Item PK `PESSIMISTIC_WRITE`로 승인·반려를 직렬화한다. application 트랜잭션에서 잠금 조회 → 검수 상태 확인 → Clock 1회 → 상태·사유·reviewed_at·updated_at 변경. 서비스 프록시가 커밋한 뒤 컨트롤러가 DTO를 반환한다. 조회는 readOnly다.
+- ADMIN 상세 최상위 `reservePrice`만 제공한다. 운영자 목록·판매자·공개 응답에는 필드가 없다. 원문 1~500 코드 포인트의 반려 사유를 보존하고 공백만인 값은 거절한다.
+- 실제 응답 카탈로그는 제품 REST handler 13개를 대조한다. ADMIN 상세 200의 정확한 최상위 필드만 실제 저장값과 일치하는지 검사하고, 나머지 필드·중첩·별칭·숫자/문자열 표식 누출은 계속 거절한다. ADMIN 전체를 검사에서 빼지 않는다.
+- 운영자 목록은 `stage`·생성 시각·ID 키셋 커서다. 검수 대기는 오름차순, 다른 단계는 내림차순. 기존 Lot의 실제 최신 생성 시각·ID로 단계와 이력을 읽는다. `created_at >= reviewed_at` 경계와 동률을 검사했다. 편성 쓰기·재출품을 구현한 것은 아니다.
+- FE는 생성된 클라이언트만 호출한다. ADMIN 메뉴·라우트 가드, 계정별 Query 키·계정 변경 시 조회 취소/캐시 제거, 명령 중 중복 제출 차단, 처리 후 목록·상세 재조회, 422 뒤 최신 상태 표시를 구현했다. 메뉴·가드는 UX이고 서버 403이 최종 방어선이다.
+- REVIEW_RESULT는 M3-06, 감사 로그는 후속이다. 기존 판매자 목록의 편성 이후 계산 확장은 M1-07·M2 후속을 유지한다. 새 의존성·Flyway 없음, V1~V5·EVENTS 불변, CHALLENGES 미결 후보를 선택하지 않았다.
+
+### 단계별 실행 증거
+
+| 단계 | 실제 결과 | 로컬 증거 |
+|---|---|---|
+| BE 게이트 | backend `test` 178개 통과 후 보강한 조회 경계·계약·커서 테스트 10개 통과. 실패/오류/skip 0. bootRun curl 통과 후 GEN 진입 | `output/m1-04/be-all-tests.log`, `be-all-test-results/`, `be-final-focused.log` |
+| 최종 BE | `clean build --console=plain --info` PASS, 14 actionable tasks 모두 실행. UTC 179개 + Seoul 179개 = 358회, 같은 179개를 두 JVM에서 실행. 각각 25클래스·실패/오류/skip 0. verifyTimeSources 89파일·위반 0 | `backend-clean-build.log`, `test-summary.json`, `test-results/test/`, `test-results/testSeoul/` |
+| 검수 경합 | 승인/반려·승인/승인·반려/반려 각각 200라운드/JVM. 최종 clean build에서 총 1,200라운드·검수 명령 2,400건. ExecutorService + CountDownLatch, 실제 HTTP·MySQL. 매번 200 하나·422 하나, DB 상태·사유·시각과 승자 응답 일치 | ItemReviewConcurrencyTest의 매 라운드 assertion. 처리량·지연 측정 아님 |
+| 트랜잭션·시간 | 커밋 전 예외로 상태·사유·시각 전부 롤백, 이후 승인 가능. 다른 트랜잭션이 락을 보유한 동안 Clock을 이동해 잠금 획득 뒤 시각이 저장됨을 확인 | ItemReviewFailureIntegrationTest |
+| 입력·조회·인가 | 사유 500/501 이모지, 공백·누락, 원문 보존, 커서 단계 결합·동률 정렬, 과거 Lot 제외·실제 이력, USER 403·익명 401·DB 불변 | ItemReviewValidationTest, AdminItemControllerTest, AdminItemHttpIntegrationTest |
+| 노출 계약 | ADMIN 상세의 저장된 표식 917431000원은 허용, 그 밖의 필드·값 누출과 상세의 중첩·별칭 누출 거절. 성공 승인·반려와 재검수·권한 오류 실제 응답 포함 | ReservePriceContractTest, ResponseContractCatalog, ReservePriceAssertions |
+| curl | 실제 등록·ADMIN 상세·승인·반려·재검수 422/current status·USER 403·익명 401·사유 400·후보·판매자 목록·404·OpenAPI 등 21항목 PASS | `curl-checks.json`, 개별 JSON. 인증 응답은 `.local.json`으로 분리해 공개하지 않음 |
+| GEN | 실제 `/v3/api-docs`에서 Orval 8.45.0 생성, typecheck PASS, 생성 코드 직접 수정 없음 | `gen-api.log`, `gen-typecheck.log`, 커밋 c08d6b5 |
+| FE | 최종 lint·typecheck·build PASS. FE 진입 후 backend source tree는 83b84a8과 동일 | `final-lint.log`, `final-typecheck.log`, `final-frontend-build.log`, Git diff |
+| 증거 검사 | 기존 CI JUnit 리포트 검증기 PASS. Git 추적·비무시 파일과 해당 작업의 비밀값 분리/가림 처리 로그 407파일에서 실제 검증용 비밀값 6개 일치 0 | `ci-report-verifier.log`, `credential-scan.json`. `.local` 자격 파일은 공개 검사 대상에서 제외 |
+
+### 실제 화면 검증
+
+실제 Chrome 두 독립 컨텍스트에서 bootRun + Vite를 사용했다. 검증 계정·출품물은 실제 API 입력이며 제품 하드코딩·합성 API 응답이 아니다. 아래 로그·PNG는 `output/playwright/m1-04/`에 있다.
+
+| 시나리오 | 결과 | 증거 |
+|---|---|---|
+| USER 권한 | 검수 메뉴 0개, 직접 URL 차단, 관리자 요청 0건. ADMIN → 로그아웃 → USER 전환 뒤에도 상세·가격·메뉴 없음, 추가 관리자 요청 0건 | `ui-user-guard.log`, `ui-account-switch.log`, `user-forbidden.png` |
+| ADMIN 로그인 | 익명 직접 진입 → 로그인 → 검수 화면 복귀, 메뉴 표시 | `ui-admin-login.log` |
+| 등록 → 검수 → 판매자 | 화면에서 Item 31·32 등록 후 실제 승인·반려 POST 각각 200. 승인만 후보 목록 표시. 판매자 재조회에서 승인·반려와 원문 사유 확인, 최저가 비노출 | `ui-register.log`, `ui-admin-review.log`, `ui-seller-result.log`, `seller-result-desktop.png` |
+| 반려 입력 | 빈 값·501 코드 포인트는 오류 표시, 반려 POST 0건. 유효 원문은 서버에 보존 | `ui-admin-review.log` |
+| 페이지·조회 상태 | 실제 20건 다음 페이지 조회. 실제 응답에 Chrome 네트워크 지연 1500ms만 적용해 로딩 관찰. 연결 실패 주입으로 오류 → 후크 제거 후 실제 200·빈 목록 복구 | `ui-admin-states.log`, `list-loading.png`, `list-network-error.png`, `list-empty-recovered.png` |
+| 다른 검수와 경합 | 실제 800×600 이미지로 Item 33 등록·상세 조회. 다른 운영자 curl 승인 200 뒤 기존 화면 반려는 422/currentStatus=APPROVED, 최신 상태 표시·폼 제거 | `ui-create-content.log`, `ui-race-open.log`, `ui-race-result.log`, `other-operator-approve.json`, `stale-review-422.png` |
+| 화면·모바일 | 1440×1050, 390×844 PNG를 직접 열어 확인. 관리자·판매자 문서 폭=390, 가로 넘침 없음. 확인한 local/sessionStorage 키 0, 수집한 uncaught pageerror 0 | `admin-visible-image.png`, `admin-visible-image-mobile.png`, `seller-result-mobile.png` |
+
+초기 익명 Refresh 401과 의도한 네트워크 실패는 브라우저 콘솔에 남는다. 모든 콘솔 항목이 0이라는 뜻은 아니다. 최초 두 출품은 1×1 투명 PNG로 기능을 검증했고, Item 33에서 별도 800×600 이미지의 실제 디코딩과 배치를 확인했다.
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 근거 |
+|---|---|---|
+| AC-03-1 | PASS | 승인 200·DB 상태·reviewedAt 저장, stage=APPROVED 후보 포함, 실제 운영자·판매자 화면 |
+| AC-03-2 | PASS | 반려 사유 원문 저장·판매자 응답/화면 표시, 후보 목록 제외 |
+| AC-03-3 | PASS | USER 승인·반려 403, 서비스 미호출 MVC와 실제 HTTP·DB 불변·curl |
+| 이미 검수한 Item 재승인 422 | PASS | 승인/반려 뒤 두 명령 조합 모두 거절, error.reviewStatus·기존 시각/사유 보존 |
+| 메뉴·직접 URL 차단 | PASS | USER 메뉴 없음·URL 차단·관리자 호출 0건, ADMIN 허용, 계정 전환 후 재확인 |
+| 승인·반려 동시 요청 | PASS | 두 JVM 합계 1,200라운드에서 매번 성공 정확히 하나·422 하나, DB 상태 일치 |
+| B-7·운영자 계약 검사 | PASS | ADMIN 상세만 reservePrice 제공, UI에서 가격 확인. 목록·판매자·공개 응답은 엄격 검사, 상세 예외도 최상위·저장값만 허용 |
+
+### 재현 중 확인·수정
+
+- 초기 Docker Desktop `run/dockerInference` 소켓 오류로 Testcontainers 초기화 실패. 사용자 재기동 뒤 Docker 28.5.1·MySQL 8.4.13으로 정상 실행했다. 설정·볼륨·데이터 초기화는 하지 않았다. 초기 실패는 PASS 증거에서 제외한다.
+- 최초 MySQL 실행의 JDBC Map 시간 값은 LocalDateTime인데 테스트가 Timestamp 객체와 비교해 실패했다. Timestamp.class로 명시 조회한 Instant 값과 비교하도록 수정했고 전체 테스트를 다시 통과했다.
+- 브라우저 offline 설정은 TanStack Query가 요청을 보류해 오류 상태 재현에 맞지 않았다. 연결 실패만 주입하고 즉시 후크를 해제한 뒤 실제 응답으로 복구했다. 잘못 중첩한 검증용 locator도 수정했다. 실패 시도 로그는 별도로 보존하며 제품 기능 실패나 최종 PASS로 섞지 않는다.
+- 긴 목록은 화면 높이 안에서 스크롤하고, 모바일에서는 선택한 상세가 화면 밖이면 그 위치로 이동하도록 보완했다.
+
+### 직접 확인하는 방법
+
+Windows에서는 이 checkout의 bootRun을 종료한 뒤 빌드한다. 기본 Java 7 대신 Java 21을 명시한다.
+
+```powershell
+$env:JAVA_HOME = 'C:\Users\jitin81\.jdks\corretto-21.0.10'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+Set-Location C:\Users\jitin81\Documents\dev\lab\four-lane-auction\backend
+.\gradlew.bat clean build
+# 경합만 확인할 때 (UTC JVM)
+.\gradlew.bat :app:test --tests 'com.fourlane.item.ItemReviewConcurrencyTest'
+Set-Location ..\frontend
+npm run lint
+npm run typecheck
+npm run build
+```
+
+실제 화면은 루트에서 `docker compose up -d mysql`, backend에서 JWT_SECRET_BASE64를 설정하고 `./gradlew.bat :app:bootRun`, 다른 터미널 frontend에서 `npm run dev`로 실행한다. ADMIN 생성은 [DEPLOY](DEPLOY.md)의 명시적 admin-seed 절차를 따른다. 비밀번호·키는 커밋하지 않는다.
+
+1. 별도 브라우저 프로필의 USER에서 `http://127.0.0.1:5173/#/items/new`로 두 건 등록한다. 같은 프로필의 탭끼리는 쿠키를 공유하므로 ADMIN은 별도 프로필로 로그인한다.
+2. ADMIN에서 `#/admin/items` → 물품 선택 → 이미지·정보·최저 낙찰가 확인 → 하나 승인, 하나 사유와 함께 반려한다.
+3. 진행 단계의 승인됨·편성 대기에는 승인 건만 나온다. USER의 `#/me/items`를 다시 조회해 승인·반려와 사유를 확인한다.
+4. USER에는 검수 메뉴가 없고 `#/admin/items`를 직접 입력해도 차단된다. 개발자 도구에서 관리자 조회가 발생하지 않는지 확인한다. 서버 권한은 아래 curl로 별도 확인한다.
+5. 다른 운영자가 같은 Item을 먼저 처리하면 남은 검수는 422로 거절되고 최신 상태를 표시한다.
+
+로그인 응답 토큰을 `$ADMIN`, `$USER1`에 두고, `$itemId`는 새로 등록한 ID로 바꿔 실행한다. 이미 검수한 로컬 증거 Item 31은 재검수 422를 확인할 때만 쓴다.
+
+```powershell
+$API = 'http://127.0.0.1:8080'
+curl.exe -i "$API/api/admin/items?stage=PENDING_REVIEW" -H "Authorization: Bearer $ADMIN"
+curl.exe -i "$API/api/admin/items/$itemId" -H "Authorization: Bearer $ADMIN"
+curl.exe -i -X POST "$API/api/admin/items/$itemId/approve" -H "Authorization: Bearer $ADMIN"
+# 최초 200, 반복 422 ITEM_NOT_PENDING_REVIEW + error.reviewStatus
+curl.exe -i -X POST "$API/api/admin/items/$itemId/approve" -H "Authorization: Bearer $USER1"
+# 403 FORBIDDEN
+curl.exe -i "$API/api/me/items" -H "Authorization: Bearer $USER1"
+```
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 상태를 읽고 판단하는 구간 전체를 PK 락으로 묶어 낡은 상태로 두 번 성공하지 못하게 한다. 선행 요청이 롤백하면 대기 요청이 성공할 수 있다. 모든 검수·미래 재출품 쓰기가 같은 규칙을 따라야 하며, 락 전에 읽은 낡은 엔티티를 쓰는 경로를 추가하면 보장이 깨질 수 있다.
+- 잠금 대기는 DB 연결을 점유한다. DB 장애·락 타임아웃은 일반 500이며 정상 경합의 200/422 보장과 구분한다. 검수 트랜잭션 안에서 파일 I/O·외부 호출을 하지 않는다. 조건부 UPDATE도 DB 쓰기 잠금을 사용할 수 있어 무조건 대기가 없다고 설명하면 안 된다.
+- 커밋 전 실패는 검수 변경 전부 롤백한다. 커밋 뒤 응답이 유실되면 재요청은 422일 수 있다. 검수 명령에 멱등 키·자동 재시도를 추가하지 않고 재조회로 결과를 확인한다.
+- Clock은 잠금 획득 뒤 읽으며 DB/응답은 UTC 밀리초다. 시계가 역행하면 검수 시각도 역행할 수 있다. 페이지 간 고정 스냅샷도 보장하지 않는다. 레인 타이머·시계 점프 OQ-35는 이번에 정하지 않았다.
+- 후속: M1-07 편성 쓰기·판매자 편성 이후 stage·중복 편성/OQ-28, M3-06 REVIEW_RESULT·알림함, M3-08 재출품, 감사 로그. 기존 M3-07 trade FK도 그대로다.
+- **NOT_RUN:** 실제 DB 커밋 ACK 유실·전원 장애·DB 네트워크 단절·락 타임아웃 장애 주입, 운영 HTTPS/TLS·배포·AWS·부하/성능·경매 완주. beforeCommit 주입·로컬 HTTP·MySQL·브라우저 결과를 이 증거로 바꾸어 쓰지 않는다.
+
+
 ## M1-03 출품 등록과 내 출품 목록
 
 - 작업일: 2026-10-28 (Asia/Seoul).
