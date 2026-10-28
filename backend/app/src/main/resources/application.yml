@@ -45,6 +45,13 @@ springdoc:
   paths-to-match: /api/**
 
 fourlane:
+  auction:
+    session:
+      timing:
+        first-bid-wait-ms: 15000
+        soft-close-ms: 10000
+        lot-gap-ms: 5000
+        resume-min-ms: 10000
   image-storage:
     root: ${ITEM_IMAGE_STORAGE_ROOT:./.local-data/images}
   auth:

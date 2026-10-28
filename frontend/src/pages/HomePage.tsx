@@ -1,3 +1,4 @@
+import { useServerClock } from '../features/time/useServerClock';
 import { ApiRequestError, apiErrorMessage } from '../api/errorMessages';
 import { SessionStatus } from '../api/generated/models';
 import type { SessionSummary } from '../api/generated/models';
@@ -21,18 +22,22 @@ const sessionTime = new Intl.DateTimeFormat('ko-KR', {
   month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
 });
 
-function SessionEntry({ session }: { session: SessionSummary }) {
+function SessionEntry({ session, now }: { session: SessionSummary; now: number | null }) {
   return (
     <li className="rounded-lg border border-line p-4">
       <h3 className="font-semibold">
         <time dateTime={session.scheduledStartAt}>{sessionTime.format(new Date(session.scheduledStartAt))}</time> 회차
       </h3>
+      {session.status === SessionStatus.SCHEDULED && <p className="mt-2 text-sm font-medium text-brand" data-testid={`session-countdown-${session.sessionId}`}>
+        {now === null ? '시작 시각 확인 중' : Date.parse(session.scheduledStartAt) <= now ? '시작 대기 중' : `시작까지 ${Math.ceil((Date.parse(session.scheduledStartAt) - now) / 1000).toLocaleString('ko-KR')}초`}
+      </p>}
       <p className="mt-2 text-sm text-muted">레인 {session.laneCount}개 · 편성 물품 {session.lotCount}개</p>
     </li>
   );
 }
 
-function SessionSection({ id, title, empty, query }: {
+function SessionSection({ id, title, empty, query, now }: {
+  now: number | null;
   id: string;
   title: string;
   empty: string;
@@ -61,7 +66,7 @@ function SessionSection({ id, title, empty, query }: {
           )}
           {items.length > 0 && (
             <ul className="space-y-3" aria-label={`${title} 회차 목록`}>
-              {items.map((session) => <SessionEntry key={session.sessionId} session={session} />)}
+              {items.map((session) => <SessionEntry key={session.sessionId} session={session} now={now} />)}
             </ul>
           )}
           {query.hasNextPage && (
@@ -77,6 +82,7 @@ function SessionSection({ id, title, empty, query }: {
 }
 
 export function HomePage() {
+  const now = useServerClock();
   const running = useSessionList(SessionStatus.RUNNING);
   const scheduled = useSessionList(SessionStatus.SCHEDULED);
   const finished = useSessionList(SessionStatus.FINISHED);
@@ -122,9 +128,9 @@ export function HomePage() {
           </div>
         </div>
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
-          <SessionSection id="running" title="진행 중" empty="진행 중인 회차가 없습니다" query={running} />
-          <SessionSection id="scheduled" title="예정" empty="예정된 회차가 없습니다" query={scheduled} />
-          <SessionSection id="finished" title="종료" empty="종료된 회차가 없습니다" query={finished} />
+          <SessionSection id="running" title="진행 중" empty="진행 중인 회차가 없습니다" query={running} now={now} />
+          <SessionSection id="scheduled" title="예정" empty="예정된 회차가 없습니다" query={scheduled} now={now} />
+          <SessionSection id="finished" title="종료" empty="종료된 회차가 없습니다" query={finished} now={now} />
         </div>
         <p className="mt-6 text-sm text-muted">회차 목록은 30초마다 자동으로 갱신됩니다.</p>
       </main>

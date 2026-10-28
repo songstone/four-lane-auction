@@ -50,12 +50,12 @@ class SchemaAndTimeIntegrationTest extends MySqlIntegrationTest {
     }
 
     @Test
-    void appliesV1ThroughV6AndSeedsOnlyTheThreePolicyTiersAndCounter() {
+    void appliesV1ThroughV7AndSeedsOnlyTheThreePolicyTiersAndCounter() {
         assertThat(jdbc.queryForObject("SELECT VERSION()", String.class)).startsWith("8.4.13");
         assertThat(jdbc.queryForList("""
                 SELECT version FROM flyway_schema_history WHERE success = 1 ORDER BY installed_rank
-                """, String.class)).containsExactly("1", "2", "3", "4", "5", "6");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history", Integer.class)).isEqualTo(6);
+                """, String.class)).containsExactly("1", "2", "3", "4", "5", "6", "7");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history", Integer.class)).isEqualTo(7);
         assertThat(jdbc.queryForMap("SELECT id,last_version FROM bid_policy_version_counter"))
                 .containsEntry("id", 1).containsEntry("last_version", 1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member", Integer.class)).isZero();
@@ -72,7 +72,7 @@ class SchemaAndTimeIntegrationTest extends MySqlIntegrationTest {
     void reapplyingMigrationsDoesNotChangeHistoryOrDuplicateThePolicy() {
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history", Integer.class)).isEqualTo(6);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history", Integer.class)).isEqualTo(7);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bid_increment_tier", Integer.class)).isEqualTo(3);
     }
 

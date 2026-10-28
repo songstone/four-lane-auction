@@ -7,6 +7,7 @@
 import type {
   AdminItemDetail,
   AdminItemListResponse,
+  AdminSessionResponse,
   ApiErrorResponse,
   AuthResponse,
   BidPolicyCreateRequest,
@@ -22,7 +23,9 @@ import type {
   LoginRequest,
   MemberResponse,
   MyItemListResponse,
+  SessionCreateRequest,
   SessionListResponse,
+  SessionPatchRequest,
   SignupRequest
 } from './models';
 
@@ -365,6 +368,95 @@ const res = await fetch(getLoginUrl(),
 
 
 
+export type createSessionResponse201 = {
+  data: AdminSessionResponse
+  status: 201
+}
+
+export type createSessionResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type createSessionResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type createSessionResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type createSessionResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type createSessionResponse422 = {
+  data: ApiErrorResponse
+  status: 422
+}
+
+export type createSessionResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type createSessionResponseSuccess = (createSessionResponse201) & {
+  headers: Headers;
+};
+export type createSessionResponseError = (createSessionResponse400 | createSessionResponse401 | createSessionResponse403 | createSessionResponse404 | createSessionResponse422 | createSessionResponse500) & {
+  headers: Headers;
+};
+
+export type createSessionResponse = (createSessionResponseSuccess | createSessionResponseError)
+
+export const getCreateSessionUrl = () => {
+
+
+
+
+  return `/api/admin/sessions`
+}
+
+/**
+ * @summary 회차 생성
+ */
+export const createSession = async (sessionCreateRequest: SessionCreateRequest, options?: RequestInit): Promise<createSessionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getCreateSessionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sessionCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: createSessionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as createSessionResponse
+}
+
+
+
 export type rejectItemResponse200 = {
   data: ItemReviewResponse
   status: 200
@@ -670,6 +762,171 @@ const res = await fetch(getCreateBidPolicyUrl(),
 
   const data: createBidPolicyResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as createBidPolicyResponse
+}
+
+
+
+export type getAdminSessionResponse200 = {
+  data: AdminSessionResponse
+  status: 200
+}
+
+export type getAdminSessionResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type getAdminSessionResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type getAdminSessionResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type getAdminSessionResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type getAdminSessionResponse422 = {
+  data: ApiErrorResponse
+  status: 422
+}
+
+export type getAdminSessionResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type getAdminSessionResponseSuccess = (getAdminSessionResponse200) & {
+  headers: Headers;
+};
+export type getAdminSessionResponseError = (getAdminSessionResponse400 | getAdminSessionResponse401 | getAdminSessionResponse403 | getAdminSessionResponse404 | getAdminSessionResponse422 | getAdminSessionResponse500) & {
+  headers: Headers;
+};
+
+export type getAdminSessionResponse = (getAdminSessionResponseSuccess | getAdminSessionResponseError)
+
+export const getGetAdminSessionUrl = (sessionId: number,) => {
+
+
+
+
+  return `/api/admin/sessions/${sessionId}`
+}
+
+/**
+ * @summary 운영자 회차 상세
+ */
+export const getAdminSession = async (sessionId: number, options?: RequestInit): Promise<getAdminSessionResponse> => {
+
+  const res = await fetch(getGetAdminSessionUrl(sessionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getAdminSessionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getAdminSessionResponse
+}
+
+
+
+export type patchSessionResponse200 = {
+  data: AdminSessionResponse
+  status: 200
+}
+
+export type patchSessionResponse400 = {
+  data: ApiErrorResponse
+  status: 400
+}
+
+export type patchSessionResponse401 = {
+  data: ApiErrorResponse
+  status: 401
+}
+
+export type patchSessionResponse403 = {
+  data: ApiErrorResponse
+  status: 403
+}
+
+export type patchSessionResponse404 = {
+  data: ApiErrorResponse
+  status: 404
+}
+
+export type patchSessionResponse422 = {
+  data: ApiErrorResponse
+  status: 422
+}
+
+export type patchSessionResponse500 = {
+  data: ApiErrorResponse
+  status: 500
+}
+
+export type patchSessionResponseSuccess = (patchSessionResponse200) & {
+  headers: Headers;
+};
+export type patchSessionResponseError = (patchSessionResponse400 | patchSessionResponse401 | patchSessionResponse403 | patchSessionResponse404 | patchSessionResponse422 | patchSessionResponse500) & {
+  headers: Headers;
+};
+
+export type patchSessionResponse = (patchSessionResponseSuccess | patchSessionResponseError)
+
+export const getPatchSessionUrl = (sessionId: number,) => {
+
+
+
+
+  return `/api/admin/sessions/${sessionId}`
+}
+
+/**
+ * @summary 예정 시각과 시간 파라미터 변경
+ */
+export const patchSession = async (sessionId: number,
+    sessionPatchRequest: SessionPatchRequest, options?: RequestInit): Promise<patchSessionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getPatchSessionUrl(sessionId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sessionPatchRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: patchSessionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as patchSessionResponse
 }
 
 

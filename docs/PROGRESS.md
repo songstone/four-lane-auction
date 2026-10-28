@@ -1,5 +1,126 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-06 회차 생성, 예정 시각 변경, 회차 목록
+
+- 작업일: 2026-10-28 (Asia/Seoul).
+- 상태: **완료 (M1-06 로컬 수용 기준·아래 실제 실행 증거 기준)**. BE → GEN → FE → 통합과 최종 빌드를 마쳤다. 원격 게시·CI 결과는 PR과 완료 보고에서 별도로 확인하며 머지는 별도 지시가 필요하다.
+- 원본: TASKS 0장·M1-06·9장, PRD M-04·AC-04-1/2/3/5 저장/6·A-02·P-01·OQ-14/48, API 4.1·7.2, EVENTS 7, ARCH 3·4·5.5.1·5.7·7.7·9, CH-01·CH-02, ADR-001~010과 M0-03 부분 매핑 후속.
+- 시작 SHA: `569c07d4ae56d899c0b4ec191855ea0acbd02b33`. fetch 후 dev=origin/dev·clean, 선행 M1-01 PR #4 ancestry 확인 후 `feature/M1-06-session-create` 생성.
+- 승인: 사용자 ①~⑥ 권장안과 변경·검증·로컬 커밋·push·dev 대상 PR 생성 승인. 머지는 별도 지시가 필요하다.
+- 결정 기록: [ADR-011](adr/ADR-011-M1-06-session-create.md), PRD OQ-14, API 0.8, ARCH 부록 A·CH-01 후보 B1의 홈 적용 표시. 새 의존성·EVENTS 변경 없음.
+
+### 승인한 구현과 경계
+
+- 실제 시작 전 SCHEDULED 동안 예정 시각·네 시간 값을 바꾼다. 예정 시각이 지났어도 timing만 변경할 수 있다. 시간 값은 각각 1,000~60,000ms 정수이며 배수·상호 대소 제약은 없다.
+- 기본값은 application.yml 한 곳의 15,000/10,000/5,000/10,000ms다. 설정 포트는 domain에, 설정 바인딩은 infra에 두어 application이 infra를 참조하지 않는다. 잘못된 기본 설정은 기동 실패한다.
+- 회차와 READY 레인은 application 트랜잭션 하나로 생성하며 Clock 1회의 값으로 미래 검증·생성/수정 시각을 채운다. 회차·레인·Lot의 @Immutable 부분 매핑을 확장했다. Lot 편성·경매 상태 전이 API는 후속이다.
+- PATCH는 회차 PK 비관적 락 뒤 상태 확인·Clock 1회·부분 변경이다. 같은 시각·과거는 422, 오프셋 누락·밀리초 미만의 손실 있는 시각·명시적 null·정수 아닌 값은 400이다. 빈 PATCH는 값과 updated_at을 보존한다.
+- ADMIN 상세는 실제 레인·Lot의 프로젝션으로 빈 레인·시작 가능 여부를 계산한다. 최저 낙찰가는 회차 응답에 포함하지 않는다. 기존 공개 GET 목록 계약·커서·정렬을 유지한다.
+- V7은 시간 범위 CHECK만 추가한다. V1~V6은 수정하지 않으며 기존 범위 밖 데이터를 자동 보정하지 않는다. 착수 시 로컬 회차는 0건이었다. 이후 번호는 V8부터다.
+
+### 단계별 실제 실행 증거
+
+- 결정·계약 선행 커밋: `e28edaf`.
+- 실제 bootRun의 V7 적용·Hibernate validate·기동 확인: `output/m1-06/bootRun.log`, `local-migrations.txt`.
+- curl 12사례의 HTTP 상태·UTC 변환·권한 검증: `output/m1-06/curl-checks.json` 및 같은 폴더 응답 JSON. 비밀값이 있는 로그인·요청 파일은 ignored output에만 보관한다.
+- BE 전체 첫 실행은 마이그레이션 이력 6건을 기대한 기존 테스트 2건이 실패했다. V7 기대값으로 수정 후 `gradlew test` 성공 (`output/m1-06/be-all-tests.log`). app 241건은 실제 실행, engine 10건은 해당 단계 UP-TO-DATE였으며 최종 clean build에서 모두 새로 실행한다. 테스트를 삭제·skip하지 않았다. 기존 GET 테스트 두 파일은 수정하지 않았다.
+- [GEN] 실행 중인 백엔드에서 Orval 8.45.0 `npm run gen-api`와 생성 후 typecheck 성공. 생성 코드 커밋 `8bd6370`, 로그 `gen-api.log`, `gen-typecheck.log`.
+- [FE] 최종 `npm run lint`, `npm run typecheck`, `npm run build` 성공. 로그 `fe-lint.log`, `fe-typecheck.log`, `fe-build.log`. FE 커밋 `f6563ac`, BE 커밋 `cd912b6`. BE 이후 backend diff 0건, 생성 클라이언트 밖 직접 fetch 0건.
+- 최종 `cd backend; .\gradlew.bat clean build` 성공: 16개 태스크 모두 실행, verifyTimeSources 122개 운영 파일·0 violations. UTC `test` 251건(app 241 + engine 10), `testSeoul` 241건(app), 각 failures/errors/skipped 0. 순수 정책 엔진은 UTC에서만 실행되며 app의 같은 테스트는 UTC·Asia/Seoul에서 각각 실행됐다.
+- JUnit XML의 testcase 수·실패/skip 요소·필수 실제 MySQL suite를 대조한 `.github/scripts/verify-test-results.py` PASS. 증거: `backend-clean-build.log`, `test-summary.json`, `ci-report-verifier.log`, `backend/*/build/test-results/{test,testSeoul}`.
+- 최종 FE 커밋은 `f6563ac`과 `ed9d844`다. 완료 검토에서 startable=false를 미편성으로 오해하지 않도록 실제 emptyLaneNos로 안내를 구분하고 lint·typecheck·build를 다시 통과했다.
+- 작업 diff의 로컬 비밀번호·JWT 키·ADMIN 해시 표식 0건 (`credential-scan.json`), `git diff --check` 통과. push·PR 생성은 이번 승인 범위이며 원격 CI·링크는 PR과 완료 보고에서 별도로 확인한다.
+
+### 실제 화면 검증
+
+새 Chrome 컨텍스트 `m106`에서 bootRun(8080) + Vite(5173)의 실제 응답을 사용했다. 아래 로그는 `output/playwright/m1-06/`, 스크립트는 ignored `output/m1-06/`에 있다.
+
+- `ui-login.log`: 익명 A-02 접근 → 로그인 → 원래 A-02 복귀, ADMIN 메뉴 확인.
+- `ui-create.log`: 빈 시각·범위 999ms는 POST 0건. 유효 생성은 더블클릭에도 POST 1건, 실제 201. 브라우저 현지 시각 `2026-11-04T20:00:00.123+09:00` 요청 → UTC `11:00:00.123Z` 응답, 서버 기본값 네 개 확인. 실제 회차 #3 생성.
+- `ui-patch.log`: #3의 예정 시각과 softCloseMs만 PATCH, 나머지 시간 값 보존. 과거 시각 생성은 실제 422와 화면 메시지. 모바일 viewport/document 390/390px. 제품 모듈을 실제 브라우저에서 import해 표본 최댓값·60초 만료·잘못된 날짜 거절을 검증했다.
+- `ui-countdown.log`: 화면에서 약 12초 뒤의 회차 #4(레인 2개)를 생성. 홈에서 남은 시간 표시 후 실제 시간 경과로 시작 대기 중 전환. Date.now를 +300,000/-300,000ms로 주입한 두 경우 모두 같은 12초 표시. OS 시계 변경이나 200ms 지연 목표 측정은 아니다.
+- `ui-overdue.log`: #4의 예정 시각이 지난 뒤 UI에서 softCloseMs만 2345로 변경. 실제 요청 `{timing:{softCloseMs:2345}}`, 200, 기존 과거 예정 시각 보존. 실제 RUNNING 회차 0건에서 빈 상태 확인.
+- `ui-states.log`: 원본 GET 전달을 지연해 로딩 확인. 연결 실패 주입 후 실제 GET 재조회 복구. POST 연결 실패는 1회만 시도하고 자동 재등록 없음. 성공 JSON을 합성하지 않았다. uncaught page error 0, local/session storage 키 0.
+- `ui-user-guard.log`: USER에게 운영자 메뉴·생성 폼 없음, 직접 URL은 접근 권한 없음. 로그아웃 후 익명으로 종료.
+- 시각 확인 이미지: `created-desktop.png`, `updated-mobile.png`, `home-countdown.png`, `home-waiting.png`, `overdue-timing-update.png`, `list-loading.png`, `list-empty.png`, `list-network-error.png`, `create-network-error.png`, `user-forbidden.png`.
+- 브라우저 콘솔에는 의도한 401/422·연결 실패와 로그아웃 시 아직 연결 중이던 WebSocket 종료 경고가 있다. 이를 uncaught page error와 구분한다. 기존 익명/ADMIN 연결 수명 정리는 M1-08 후속이다.
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 실제 근거 |
+|---|---|---|
+| AC-04-1 | PASS | AdminSessionHttpIntegrationTest 1~4개 생성·SCHEDULED·READY·레인 번호·동일 시각·목록 확인. 실제 UI #3·#4 생성·홈 표시 |
+| AC-04-2 | PASS | SessionValidationTest·AdminSessionControllerTest의 0·5·누락·타입 오류, 실제 화면 필수값·999ms 오류와 POST 0건 |
+| AC-04-3 | PASS | 전체/부분 생략 기본값, 설정 재정의·잘못된 설정 기동 실패, 실제 POST·화면 응답의 15000/10000/5000/10000 |
+| AC-04-5 저장 부분 | PASS | 실제 MySQL 원시 UTC 문자열과 응답 일치, 오프셋 누락 400. UTC·Seoul 최종 재실행 결과는 빌드 절 참고 |
+| AC-04-6 | PASS | 생성·PATCH 각각 Clock -1ms/정확히 지금/+1ms 경계. 실제 curl·화면의 과거 요청 422 |
+| OQ-14 | PASS | 각 값 999/1000/1001/59999/60000/60001, 정수·null 검증, 실제 DB CHECK 3819. 과거 SCHEDULED의 timing-only 수정 200 |
+| 예정 시각·부분 수정 | PASS | 전달 필드만 변경·빈 PATCH timestamp 보존·404·RUNNING/FINISHED 422, 실제 UI 요청 본문·응답 확인 |
+| 동시성·원자성 | PASS | 같은/다른 필드 각각 500쌍, 락 대기 중 Clock·상태 재검사. 레인 INSERT 실패와 beforeCommit 실패 롤백 |
+| 기존 GET 회귀 | PASS | 기존 SessionControllerTest 11건·SessionHttpAndStompIntegrationTest 24건, 파일 변경 없이 통과 |
+| 응답 계약·최저가 비노출 | PASS | 전체 handler 응답 카탈로그와 저장된 최저가 표식의 실제 비어 있지 않은 Lot 응답 검사 |
+| ADMIN 접근·화면 상태 | PASS | 실제 HTTP 401/403 및 USER URL 가드, 로딩·실제 빈 목록·오류·복구·모바일 확인 |
+| AC-04-4·AC-04-5 자동 시작 부분 | NOT_RUN — 후속 | TASKS가 M2-02에 배정한 자동 시작·재예약·시작 경합은 이번에 구현하지 않음 |
+
+### 직접 확인하는 방법
+
+Windows의 clean은 실행 중인 bootRun이 engine JAR를 잡고 있으면 실패한다. 먼저 bootRun을 종료한 뒤 검사하고 다시 실행한다. 인증 환경 준비는 기존 M1-01 절·ADR-006을 따른다.
+
+```powershell
+# 저장소 루트에서, 실행 중인 bootRun 종료 후
+cd backend
+.\gradlew.bat clean build
+.\gradlew.bat :app:bootRun
+# 별도 터미널, 저장소 루트에서
+cd frontend
+npm run lint
+npm run typecheck
+npm run build
+npm run dev
+```
+
+```powershell
+$taskEmail = Read-Host 'ADMIN 이메일'
+$taskPassword = Read-Host 'ADMIN 비밀번호' -MaskInput
+$taskLogin = @{email=$taskEmail;password=$taskPassword} | ConvertTo-Json -Compress
+$taskAdmin = (Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/api/auth/login -ContentType application/json -Body $taskLogin).accessToken
+$taskHeaders = @{Authorization="Bearer $taskAdmin"}
+$taskSchedule = [DateTimeOffset]::Now.AddHours(1).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz')
+$taskInput = @{laneCount=2;scheduledStartAt=$taskSchedule} | ConvertTo-Json -Compress
+$taskCreated = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/api/admin/sessions -Headers $taskHeaders -ContentType application/json -Body $taskInput
+$taskId = $taskCreated.session.sessionId
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/api/admin/sessions/$taskId" -Headers $taskHeaders
+Invoke-RestMethod -Method Patch -Uri "http://127.0.0.1:8080/api/admin/sessions/$taskId" -Headers $taskHeaders -ContentType application/json -Body '{"timing":{"softCloseMs":8000}}'
+Invoke-RestMethod -Uri 'http://127.0.0.1:8080/api/sessions?status=SCHEDULED'
+```
+
+1. `http://127.0.0.1:5173/#/admin/sessions`에서 ADMIN 로그인 → 레인 1~4·미래 현지 시각으로 생성 → 선택 회차의 기본값·레인 수 확인.
+2. 예정 시각과 시간 값 하나를 변경 → 홈의 예정 목록과 남은 시간 확인. 999ms·과거 시각으로 오류 확인.
+3. 가까운 미래의 회차를 만들고 시각 경과 뒤 홈의 시작 대기 중 확인 → 운영자 화면에서 예정 시각을 보존하고 시간 값만 저장.
+4. USER 로그인 → 운영자 메뉴 비노출·직접 URL 차단 확인.
+
+### 증거의 범위
+
+Testcontainers MySQL·가짜 Clock 경계·반복 경합·실제 로컬 HTTP·브라우저 증거다. 테스트용 DB 상태 변경을 실제 회차 시작 증거로 보지 않는다. beforeCommit·CHECK 실패 주입은 DB 커밋 ACK 유실·네트워크 단절·전원 장애 증거가 아니다. 운영 TLS·AWS·성능·복구·자동 시작은 NOT_RUN이다. 카운트다운의 ±5분 검사는 브라우저 Date.now 주입이며 OS 시계 변경·네트워크 지연 200ms 목표의 측정이 아니다.
+
+### 재현 중 확인한 사항
+
+- MySQL CHECK 위반은 JDBC SQLState HY000·오류 3819이며 현재 Spring에서는 UncategorizedSQLException으로 번역됐다. 테스트는 구체적인 DB 오류 3819를 확인하도록 수정했다. 제약을 완화하지 않았다.
+- timing만 바꾸는 과거 회차 테스트에서 Clock을 크게 이동시키면 JWT도 만료된다. 기존 예정 시각을 테스트 DB에서 과거로 설정해 업무 조건을 분리했다.
+- PowerShell ConvertFrom-Json은 ISO 시각을 DateTime으로 변환할 수 있어 curl 증거 스크립트는 DateKind String을 사용해 원문 UTC 문자열을 비교한다.
+- 실행 중인 bootRun의 engine JAR 파일 잠금 때문에 첫 clean이 실패했다. 해당 앱 프로세스를 종료한 뒤 같은 clean build를 다시 실행했고 컴파일 뒤 서버를 재기동했다. 실패 로그는 backend-clean-build-file-lock.log다.
+- Playwright의 datetime-local fill에서 0초의 정규화 형태가 Malformed value를 일으킨 검증 스크립트는 밀리초를 명시해 다시 실행했다. 제품 응답을 합성하거나 검증을 건너뛰지 않았다.
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 같은 회차를 바꾸는 모든 경로가 같은 회차 행을 먼저 잠가야 변경 유실·시작 뒤 수정이 방지된다. 잠금 전 미리 읽은 엔티티·우회 쓰기·락 순서 역전은 이 보장을 깨뜨릴 수 있다. 대기는 DB 커넥션을 점유한다.
+- 커밋 전 실패는 회차·레인 또는 수정값 전체를 롤백한다. 커밋 ACK 유실은 별도 문제다. 생성 후 응답을 잃고 재등록하면 중복 회차가 생길 수 있어 자동 재시도하지 않는다.
+- Clock 역행은 기록 시각을 역행시키고, 앞으로 점프하면 입력이 거절될 수 있다. +1ms 요청은 검증 시점에 미래이면 유효하다. 커밋 전에 그 시각이 지났다는 이유로 다시 거절하지 않는다.
+- 예정 시각 변경은 목록의 정렬 키를 바꾼다. ADR-003대로 페이지 사이 스냅샷은 보장하지 않아 이동한 행을 놓치거나 다시 볼 수 있다. 변경 후 재조회·홈 30초 갱신으로 목록을 새로 맞춘다.
+- 편성 쓰기는 M1-07, 자동 시작·시작 경합·정책 고정은 M2-02다. OQ-35·OQ-38·레인 엔진·복구·성능·운영 배포는 이번 결과로 완료 처리하지 않는다.
+
+---
+
 ## M1-05 호가 정책 (Strategy와 버전 관리)
 
 - 작업일: 2026-10-28 (Asia/Seoul).
@@ -1040,7 +1161,7 @@ npm run build
 
 - **M1-02 처리 완료 (2026-10-27)**: M0-03 당시의 Authorization 포함 CONNECT 일괄 거절을 제거했다. 공용 Decoder로 유효/만료/위조를 구분하고 Principal·인증 개인 큐·프론트 신원 전환을 구현·검증했다(위 M1-02 절·ADR-007). 아래 M0-03의 실행 증거는 당시 범위 그대로다.
 - **M1-08**: 홈의 익명 STOMP 연결은 M0 진단용 예외다. EVENTS 1.1의 비로그인 연결 시점(관전 화면)에 맞춰 연결 수명을 정리한다.
-- 회차·레인·Lot 엔티티는 현재 조회용 부분 매핑이며 `@Immutable`이다. 후속 생성·상태 전이 구현 시 해당 매핑을 확장한다. 이번 작업에서 상태 전이나 쓰기 기능의 완료를 주장하지 않는다.
+- **M1-06에서 매핑 확장**: M0-03 당시 조회용 부분 매핑·@Immutable이었던 회차·레인·Lot을 쓰기용으로 확장했다. 회차·READY 레인 생성과 회차 설정 수정은 M1-06, Lot 편성·경매 상태 전이는 후속 작업이다. M0-03 당시 증거의 범위는 그대로다.
 
 ### 단계별 실행 증거
 

@@ -2,9 +2,9 @@
 
 | 항목 | 내용 |
 |---|---|
-| 버전 | 0.7 (초안) |
+| 버전 | 0.8 (초안) |
 | 작성일 | 2026-10-23 |
-| 변경 이력 | 0.4 M1-01 승인: 비밀번호 UTF-8 72바이트 제한·코드 포인트 길이, 닉네임 중복 허용, Refresh 절대 7일·만료 경계·로컬 Secure 예외 / 0.1 최초 작성 / 0.2 프론트 관점 검토 반영 ([부록 B](#부록-b-프론트-관점-검토)): 로그아웃·내 정보 API, 출품물 진행 단계(`stage`)와 편성 가능 판정, 알림 미읽음 수, 다중 탭 재발급, 공개 API의 잘못된 토큰, 이미지 상한 값, 과거 예정 시각 거절. 화면별 데이터 출처 표([부록 A](#부록-a-화면별-데이터-출처))와 계약 질문([11장](#11-계약을-쓰며-찾은-질문))을 더함 / 0.3 계약 질문 CQ-01~04가 PRD OQ-45~48로 결정되어 해당 항목의 (제안)을 뗌. 12장의 차이를 PRD 0.5·ARCHITECTURE 0.3에 반영함. 로그아웃이 쿠키를 받도록 Refresh Token 쿠키 경로를 `/api/auth`로 넓힘 (1.3) |
+| 변경 이력 | 0.8 M1-06 승인: OQ-14 시간 범위·변경 시점, 엄격한 미래 경계, null·빈 PATCH·밀리초 정밀도 규칙 / 0.4 M1-01 승인: 비밀번호 UTF-8 72바이트 제한·코드 포인트 길이, 닉네임 중복 허용, Refresh 절대 7일·만료 경계·로컬 Secure 예외 / 0.1 최초 작성 / 0.2 프론트 관점 검토 반영 ([부록 B](#부록-b-프론트-관점-검토)): 로그아웃·내 정보 API, 출품물 진행 단계(`stage`)와 편성 가능 판정, 알림 미읽음 수, 다중 탭 재발급, 공개 API의 잘못된 토큰, 이미지 상한 값, 과거 예정 시각 거절. 화면별 데이터 출처 표([부록 A](#부록-a-화면별-데이터-출처))와 계약 질문([11장](#11-계약을-쓰며-찾은-질문))을 더함 / 0.3 계약 질문 CQ-01~04가 PRD OQ-45~48로 결정되어 해당 항목의 (제안)을 뗌. 12장의 차이를 PRD 0.5·ARCHITECTURE 0.3에 반영함. 로그아웃이 쿠키를 받도록 Refresh Token 쿠키 경로를 `/api/auth`로 넓힘 (1.3) |
 | 근거 문서 | [PRD.md](PRD.md) 0.5, [ARCHITECTURE.md](ARCHITECTURE.md) 0.3 |
 | 짝 문서 | [EVENTS.md](EVENTS.md) (WebSocket/STOMP 계약) |
 | 상태 | 초안. 1주차 계약이다. 프론트와 백엔드는 이 문서와 EVENTS.md를 보고 병렬로 개발한다. springdoc가 코드에서 만든 OpenAPI가 이 문서와 같은지는 계약 테스트로 확인한다 |
@@ -872,6 +872,16 @@ A-01 검수 상세.
 
 ### 7.2 회차 관리
 
+M1-06 승인 (2026-10-28, ADR-011): 시간 파라미터 네 값은 각각 1,000~60,000ms의 JSON 정수다. 배수·상호 대소 제약은 없다. 실제 시작 전 SCHEDULED 동안 변경 가능하며 예정 시각이 지나도 timing만 변경할 수 있다.
+
+- 예정 시각은 주입 Clock의 현재 시각보다 엄격하게 뒤여야 한다. 같은 시각도 422 SCHEDULED_START_IN_PAST다.
+- 요청 시각은 문자열·오프셋 필수다. 오프셋 누락은 scheduledStartAt/MISSING_OFFSET, 밀리초로 정확히 표현할 수 없는 값은 INVALID_FORMAT, 저장 가능한 UTC 날짜 범위 밖은 OUT_OF_RANGE로 400을 반환한다.
+- 숫자 필드는 JSON 정수만 받는다. 문자열·소수·boolean은 INVALID_FORMAT, 범위 위반은 OUT_OF_RANGE다. 필드가 명시적 null이면 REQUIRED다. timing 자체의 null도 REQUIRED다. 오류에는 error.fields를 제공한다.
+- 생성의 laneCount·scheduledStartAt은 필수다. timing 생략·빈 객체·부분 생략은 설정 기본값으로 채운다.
+- PATCH 생략 필드는 보존한다. {}·{"timing":{}}는 변경 없는 200이며 updated_at도 보존한다.
+- 생성·수정에는 멱등 키 계약이 없다. 5xx·통신 오류는 자동 재시도하지 않고 목록·상세로 먼저 확인한다.
+
+
 #### `POST /api/admin/sessions` — 회차 생성
 
 A-02.
@@ -890,13 +900,13 @@ A-02.
 |---|:-:|---|
 | `laneCount` | O | 1~4 (AC-04-2) |
 | `scheduledStartAt` | O | 오프셋 필수 (AC-04-5) |
-| `timing` | | 통째로 생략하거나 일부만 넣으면 빠진 값은 기본값(15초 / 10초 / 5초 / 10초)으로 채운다 (AC-04-3). 1 이상의 정수. 허용 범위는 [OQ-14] |
+| `timing` | | 통째로 생략하거나 일부만 넣으면 빠진 값은 기본값(15초 / 10초 / 5초 / 10초)으로 채운다 (AC-04-3). 각 값 1,000~60,000ms의 정수 (OQ-14) |
 
 **응답** `201`: `GET /api/admin/sessions/{sessionId}`와 같은 모양.
 
 **에러**: `400 INVALID_REQUEST`(`fields`), `422 SCHEDULED_START_IN_PAST`
 
-- `SCHEDULED_START_IN_PAST`: 예정 시각이 서버의 현재 시각 이전이다 (PRD OQ-48, AC-04-6). 받아 주면 그 회차는 자동으로 시작하지 않는다. 지난 예정 시각은 "놓친" 것으로 보기 때문이다 (AC-06-4, [OQ-38]). 운영자가 시각을 잘못 넣은 것을 모른 채 기다리게 되므로 거절한다.
+- `SCHEDULED_START_IN_PAST`: 예정 시각이 서버의 현재 시각보다 뒤가 아니다 (PRD OQ-48, AC-04-6). 받아 주면 그 회차는 자동으로 시작하지 않는다. 지난 예정 시각은 "놓친" 것으로 보기 때문이다 (AC-06-4, [OQ-38]). 운영자가 시각을 잘못 넣은 것을 모른 채 기다리게 되므로 거절한다.
 
 #### `GET /api/admin/sessions/{sessionId}` — 회차와 편성
 
@@ -955,7 +965,7 @@ A-02. `SCHEDULED`에서만 된다.
 **요청**: `{ "scheduledStartAt": "…+09:00" }` 또는 `{ "timing": { "softCloseMs": 8000 } }`. 넣은 필드만 바꾼다.
 
 - 예정 시각을 바꾸면 새 시각에 자동 시작한다 (AC-04-4).
-- 시간 파라미터를 언제까지, 어느 범위로 바꿀 수 있는지는 [OQ-14].
+- 실제 시작 전 SCHEDULED 동안 각 시간 파라미터를 1,000~60,000ms 정수로 변경한다 (OQ-14).
 
 **응답** `200`: `GET /api/admin/sessions/{sessionId}`와 같은 모양.
 
@@ -1194,7 +1204,7 @@ A-05. 버전 내림차순, 페이지 없음 (버전 수가 적다).
 | `ITEM_NOT_PENDING_REVIEW` | 422 | 이미 검수한 Item | 7.1 |
 | `ITEM_NOT_ASSIGNABLE` | 422 | 편성할 수 없는 Item (`stage` 기준) | 7.2 |
 | `SESSION_NOT_SCHEDULED` | 422 | 회차가 `SCHEDULED`가 아님 | 7.2 |
-| `SCHEDULED_START_IN_PAST` | 422 | 예정 시각이 이미 지남 (PRD OQ-48) | 7.2 |
+| `SCHEDULED_START_IN_PAST` | 422 | 예정 시각이 현재와 같거나 지남 (PRD OQ-48) | 7.2 |
 | `SESSION_NOT_RUNNING` | 422 | 회차가 `RUNNING`이 아님 | 7.3 |
 | `SESSION_START_CONDITION_NOT_MET` | 422 | Lot이 없는 레인이 있음 | 7.2 |
 | `INTERNAL_ERROR` | 500 | 예상하지 못한 서버 오류 | 전체 |

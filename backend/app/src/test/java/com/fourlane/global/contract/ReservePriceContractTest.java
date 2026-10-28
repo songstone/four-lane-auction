@@ -74,6 +74,16 @@ class ReservePriceContractTest extends ItemTestSupport {
         catalog.rest("POST", "/api/admin/bid-policies", "ADMIN_INVALID", 400, () -> mvc.perform(post("/api/admin/bid-policies").header("Authorization", administrator).contentType("application/json").content("{\"tiers\":[]}")).andReturn());
         catalog.rest("GET", "/api/admin/bid-policies", "USER", 403, () -> mvc.perform(get("/api/admin/bid-policies").header("Authorization", owner)).andReturn());
         catalog.rest("POST", "/api/admin/bid-policies", "ANONYMOUS", 401, () -> mvc.perform(post("/api/admin/bid-policies").contentType("application/json").content("{}")).andReturn());
+        String sessionInput="{\"laneCount\":2,\"scheduledStartAt\":\"2026-11-02T20:00:00.000+09:00\"}";
+        var createdSession=mvc.perform(post("/api/admin/sessions").header("Authorization",administrator).contentType("application/json").content(sessionInput)).andReturn().getResponse();
+        assertThat(createdSession.getStatus()).isEqualTo(201);
+        long sessionId=json.readTree(createdSession.getContentAsString()).at("/session/sessionId").asLong();
+        catalog.rest("POST","/api/admin/sessions","ADMIN",201,()->mvc.perform(post("/api/admin/sessions").header("Authorization",administrator).contentType("application/json").content(sessionInput)).andReturn());
+        catalog.rest("GET","/api/admin/sessions/{sessionId}","ADMIN",200,()->mvc.perform(get("/api/admin/sessions/"+sessionId).header("Authorization",administrator)).andReturn());
+        catalog.rest("PATCH","/api/admin/sessions/{sessionId}","ADMIN",200,()->mvc.perform(patch("/api/admin/sessions/"+sessionId).header("Authorization",administrator).contentType("application/json").content("{\"timing\":{\"softCloseMs\":1234}}")).andReturn());
+        catalog.rest("POST","/api/admin/sessions","ANONYMOUS",401,()->mvc.perform(post("/api/admin/sessions").contentType("application/json").content(sessionInput)).andReturn());
+        catalog.rest("POST","/api/admin/sessions","USER",403,()->mvc.perform(post("/api/admin/sessions").header("Authorization",owner).contentType("application/json").content(sessionInput)).andReturn());
+        catalog.rest("POST","/api/admin/sessions","ADMIN_INVALID",400,()->mvc.perform(post("/api/admin/sessions").header("Authorization",administrator).contentType("application/json").content("{}")).andReturn());
         catalog.verifyRestCoverage(mappings);
         // No product lane event producer exists in M1-03. Future producers must supply real captures and type coverage.
         catalog.verifyEventCoverage(Set.of());

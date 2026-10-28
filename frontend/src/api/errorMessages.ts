@@ -16,6 +16,10 @@ const messages: Record<string, string> = {
   IMAGE_TOO_LARGE: '이미지는 장당 10MB, 전체 요청은 101MB까지 등록할 수 있습니다.',
   IMAGE_NOT_FOUND: '이미지를 찾을 수 없습니다.',
   AUTH_SESSION_CHANGED: '로그인 계정이 바뀌었습니다. 현재 계정으로 다시 확인해 주세요.',
+  SESSION_NOT_FOUND: '회차를 찾을 수 없습니다. 목록을 다시 확인해 주세요.',
+  SESSION_NOT_SCHEDULED: '이미 시작한 회차는 설정을 변경할 수 없습니다.',
+  SCHEDULED_START_IN_PAST: '예정 시작 시각은 서버의 현재 시각보다 뒤여야 합니다.',
+  SESSION_RESULT_UNCONFIRMED: '처리 결과가 불확실하면 다시 제출하기 전에 목록이나 상세를 새로 조회해 주세요.',
   ITEM_NOT_FOUND: '출품물을 찾을 수 없습니다. 목록을 다시 확인해 주세요.',
   ITEM_NOT_PENDING_REVIEW: '이미 검수가 끝난 출품물입니다. 최신 상태를 확인해 주세요.',
 };
@@ -106,4 +110,12 @@ export function policyFieldErrors(fields: FieldError[]): Record<string, string> 
       isMin ? '원 단위 정수를 입력하고 구간 하한을 오름차순으로 배치해 주세요.' : '원 단위 정수를 입력해 주세요.';
     return [field, message];
   }));
+}
+
+export function sessionFieldErrors(fields: FieldError[]): Record<string, string> {
+  return Object.fromEntries(fields.map(({ field, reason }) => [field,
+    field === 'laneCount' ? '레인 수는 1~4개입니다.' :
+    field === 'scheduledStartAt' ? reason === 'REQUIRED' ? '예정 시작 시각을 입력해 주세요.' : '올바른 현지 시각을 밀리초 단위로 입력해 주세요.' :
+    reason === 'REQUIRED' ? '시간 값을 입력해 주세요.' : '시간 값은 1,000~60,000ms의 정수입니다.',
+  ]));
 }
