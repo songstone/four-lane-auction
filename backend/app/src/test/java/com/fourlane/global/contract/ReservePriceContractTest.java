@@ -89,6 +89,27 @@ class ReservePriceContractTest extends ItemTestSupport {
         catalog.rest("PUT","/api/admin/sessions/{sessionId}/lanes/{laneNo}/lots","USER",403,()->mvc.perform(put(lineupPath).header("Authorization",owner).contentType("application/json").content("{\"itemIds\":[]}")).andReturn());
         catalog.rest("PUT","/api/admin/sessions/{sessionId}/lanes/{laneNo}/lots","ADMIN_INVALID",400,()->mvc.perform(put(lineupPath).header("Authorization",administrator).contentType("application/json").content("{\"itemIds\":[1,1]}")).andReturn());
         catalog.rest("GET","/api/me/items","OWNER_AFTER_LINEUP",200,()->mvc.perform(get("/api/me/items").header("Authorization",owner)).andReturn());
+        for (String audience : List.of("ANONYMOUS", "OWNER", "OTHER_USER", "ADMIN")) {
+            String bearer = audience.equals("ANONYMOUS") ? null : "Bearer " + token(
+                    audience.equals("ADMIN") ? admin : audience.equals("OWNER") ? seller : other,
+                    audience.equals("ADMIN") ? "ADMIN" : "USER");
+            catalog.rest("GET", "/api/sessions/{sessionId}", audience, 200, () -> {
+                var request=get("/api/sessions/"+sessionId);
+                if(bearer!=null)request.header("Authorization",bearer);
+                return mvc.perform(request).andReturn();
+            });
+            catalog.rest("GET", "/api/lots/{lotId}", audience, 200, () -> {
+                long lot=jdbc.queryForObject("SELECT o.id FROM lot o JOIN lane l ON l.id=o.lane_id WHERE l.session_id=? AND l.lane_no=1",Long.class,sessionId);
+                assertThat(jdbc.queryForObject("SELECT reserve_price FROM lot WHERE id=?",Long.class,lot)).isEqualTo(MARKER);
+                var request=get("/api/lots/"+lot);
+                if(bearer!=null)request.header("Authorization",bearer);
+                return mvc.perform(request).andReturn();
+            });
+        }
+        catalog.rest("GET","/api/sessions/{sessionId}","MISSING",404,()->mvc.perform(get("/api/sessions/9000000000")).andReturn());
+        catalog.rest("GET","/api/lots/{lotId}","MISSING",404,()->mvc.perform(get("/api/lots/9000000000")).andReturn());
+        catalog.rest("GET","/api/sessions/{sessionId}","INVALID_TOKEN",401,()->mvc.perform(get("/api/sessions/"+sessionId).header("Authorization","Bearer invalid")).andReturn());
+        catalog.rest("GET","/api/lots/{lotId}","INVALID_TOKEN",401,()->mvc.perform(get("/api/lots/9000000000").header("Authorization","Bearer invalid")).andReturn());
         catalog.verifyRestCoverage(mappings);
         // No product lane event producer exists in M1-03. Future producers must supply real captures and type coverage.
         catalog.verifyEventCoverage(Set.of());
