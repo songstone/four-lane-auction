@@ -59,7 +59,7 @@ node --env-file=simulator/.env simulator/seed/seed-demo.mjs --lanes 2 --lots-per
 
 ## 직접 확인
 
-결과 JSON의 `session.viewerUrl`을 열면 익명 홈 → 예정 회차 → P-03의 레인별 M개 미리보기와 Lot 상세·이미지를 볼 수 있다. 판매자 1·2로 로그인해 `/#/me/items`에서 편성됨 및 반려 사유를 확인한다. ADMIN은 결과의 `session.adminUrl`에서 모든 레인 편성과 시작 가능 표시를 확인한다. 이 시드에서 경매 시작 버튼은 누르지 않는다.
+익명 홈에서 예정 회차를 선택하거나 결과 JSON의 `session.viewerUrl`로 P-03에 직접 들어가 레인별 M개 미리보기와 Lot 상세·이미지를 확인한다. 판매자 1·2로 로그인해 `/#/me/items`에서 편성됨 및 반려 사유를 확인한다. ADMIN은 결과의 `session.adminUrl`에서 모든 레인 편성과 시작 가능 표시를 확인한다. 이 시드에서 경매 시작 버튼은 누르지 않는다.
 
 ```powershell
 $API = 'http://127.0.0.1:8080'
