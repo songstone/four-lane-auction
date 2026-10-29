@@ -5,6 +5,12 @@
 application-local.yml
 application-local.yaml
 
+# Simulator credentials and per-run reports (keep the blank example tracked)
+/simulator/.env
+/simulator/.env.*
+!/simulator/.env.example
+/simulator/output/
+
 # Build output
 .gradle/
 **/build/

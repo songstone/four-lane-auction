@@ -1,5 +1,99 @@
 # Four-Lane Auction — 진행·검증 기록
 
+## M1-10 시연 데이터 시드 스크립트
+
+- 작업일: 2026-10-29 (Asia/Seoul).
+- 상태: **완료 (M1-10 로컬 수용 기준·아래 실제 실행 증거 기준)**. 전체 backend clean build, 프론트 회귀 검사, 실제 시드 연속 실행·curl·화면 확인을 마쳤다. 승인 범위로 push·dev 대상 PR을 진행하며 원격 CI 결과는 PR·완료 보고에서 구분한다. 머지는 별도 지시가 필요하다.
+- 원본: TASKS 0장·M1-10·9장 OQ-27·M1 시연 1~5, PRD 3.1·M-01~05 관련 AC, API 3·4.1/2/4/5·6.4/5·7.1/2, EVENTS 6.7, ARCH 4.3/4.4/4.6, CH-11, ADR-001~014 및 PROGRESS 후속.
+- 시작 SHA: `414e483b488d5f0ec2f4988aeab9a0dcd1132ff6`. fetch 후 dev=origin/dev·clean, 선행 M1-08 PR #11(`40b17b8`) 포함 확인 후 `feature/M1-10-demo-seed` 생성. M1-09 PR #12도 포함한다.
+- 승인: 사용자 권장안 전체·변경·실제 검증·기록·목적별 로컬 커밋·push·dev 대상 PR 생성 승인. 머지는 별도 지시가 필요하다. 세션 범위는 M1-10 하나다.
+- 결정 기록: [ADR-015](adr/ADR-015-M1-10-demo-seed.md), PRD OQ-27. API-only는 사용자 지시를 따르고 Node JavaScript·자체 PNG 4종의 CC0·계정 재사용/새 회차·기본 2×2+반려 1건·X=30분을 승인받았다. 기존 OQ-28 문구와 ADMIN 상세 최저가 예외도 일치시켰다.
+- 의존성·계약·스키마: 새 외부 의존성 없음. 실제 Node 24.11.1·npm 11.6.2. API·EVENTS·backend·frontend 구현 불변, Flyway 없음(V1~V7 유지, 다음 번호 V8 미사용). CH-11 후보는 선택하지 않았다.
+- 커밋: `063792b` 결정 문서, `1c8b935` 시드·이미지·설정·사용법, `204fae1` 테스트. 최종 증거는 별도 docs 커밋으로 기록한다.
+
+### 승인한 구현과 경계
+
+- `simulator/seed/seed-demo.mjs`는 기존 API로만 데이터를 만든다. ADMIN 로그인·역할 확인 → 판매자 2명/입찰자 2명 가입·로그인 → N×M개 출품 승인 및 별도 1개 반려 → 서버 시각 조회 → 예정 회차 생성 → 각 레인 편성 → 실제 조회 검증 순서다. ADMIN 생성은 기존 비웹 `local,admin-seed`로 별도 준비한다.
+- 정확한 `409 EMAIL_ALREADY_EXISTS`만 계정 재사용으로 인정한다. 입력 비밀번호로 로그인하고 USER 역할을 확인한다. 매 실행 새로운 출품·회차·Lot을 생성하며 같은 Item을 다른 회차에 중복 편성하지 않는다.
+- 기본 N=2, M=2, X=30분. 레인은 1~4, M·X는 양의 정수다. 시작가와 동일한 최저가 기본값 사례와 명시한 최저가 사례를 섞는다. 실제 ADMIN 상세로 기본값을 대조하고 공개·판매자 응답에서는 reservePrice 필드 부재를 검사한다.
+- 사진·외부 폰트·브랜드 없는 자체 도형 PNG 4종을 커밋했다. 각 640×480, DEMO 표시. PNG에만 CC0-1.0을 적용하고 출처·SHA-256·재현용 생성 소스를 제공한다. API로 다시 받은 이미지와 원본의 SHA-256을 대조한다.
+- 비밀번호는 환경변수 또는 ignored `.env`만 사용한다. 토큰·쿠키는 API 클라이언트 private 필드에 보관하고 종료 시 기존 로그아웃 API로 정리한다. 로그·결과 JSON에는 자격 비밀값을 쓰지 않는다. 결과 파일 경로는 요청 전에 확보하고 기존 파일은 덮어쓰지 않는다.
+- 확정된 `401 UNAUTHENTICATED`에는 기존 refresh API 및 원요청 재전송을 한 번만 허용한다. 네트워크/timeout/5xx/응답 해석 실패 뒤 쓰기는 재전송하지 않는다. 부분 완료된 ID와 실패 단계를 기록한다.
+- 회차 생성 직전 실제 `serverTime + X분`을 밀리초 UTC로 보낸다. 편성·이미지·판매자 확인 후 공개 상세를 다시 읽어 여전히 미래인 예정 회차와 같은 Lot 순서인지 확인한다. 서버의 시간·트랜잭션·락 규칙을 변경하지 않는다.
+
+### 단계별 실제 실행 증거
+
+기본 증거는 ignored `output/m1-10/`, 화면은 `output/playwright/m1-10/`에 있다. 비밀 환경 파일은 `simulator/.env.m1-10.local`과 `output/m1-10/server.env.local`로 별도 보관하며 커밋·원격 업로드하지 않는다.
+
+| 단계 | 실제 결과 | 증거 |
+|---|---|---|
+| 빈 DB 준비 | 새 Compose 프로젝트 `fourlane-m110-proof`, 새 named volume 생성. 최초 업무 스키마 테이블 0개. 기존 admin-seed 뒤 V1~V7 success, ADMIN 1·Item 0·회차 0 | `empty-schema.txt`, `before-first-seed.txt`, `admin-seed.log` |
+| 첫 실제 시드 | 2레인×2Lot·30분, exit 0/PASS. 회원 ID ADMIN 1·USER 2~5, 회차 1, Item 1~5(승인 4·반려 1), Lot 1~4 | `run-1.json`, `run-1.log` |
+| 연속 재실행 | 같은 DB·자격·인자, exit 0/PASS. USER 가입 4건이 EMAIL_ALREADY_EXISTS 뒤 정상 로그인. 계정 ID 유지, 회차 2·Item 6~10·Lot 5~8 신규 | `run-2.json`, `run-2.log`, `repeat-comparison.json` |
+| 인자 변경 | 1레인×3Lot·45분, exit 0/PASS. 회차 3·Item 11~14·Lot 9~11, 별도 반려 1개 | `run-3.json`, `run-3.log` |
+| 실제 curl | 공개 목록·회차 1/2/3 상세·각 첫 Lot 상세, 7건 모두 HTTP 200. 각 레인 수·미리보기 수 확인 | `curl-results.json`, `curl-0.json`~`curl-6.json` |
+| 실제 거절 | 기존 판매자 1의 다른 비밀번호로 재실행하면 exit 1·401 INVALID_CREDENTIALS, 새 Item 0·회차 없음. 레인 5는 HTTP 전 INVALID_LANES로 exit 1 | `wrong-password.json`, `negative-checks.json` |
+| 스크립트 테스트 | `node --test simulator/seed/api-client.test.mjs simulator/seed/seed-demo.test.mjs`: 20 PASS, 실패/skip 0. 통제 HTTP 서버와 fake는 오류·인증 분기 검증이며 실제 서비스 증거와 구분 | `node-tests.log` |
+| 이미지 | 4종 시각 확인, 두 번 생성의 SHA 동일. PNG CRC32·inflate·규격 확인, import 부작용 없음. 실제 업로드 후 바이트 해시 동일 | `simulator/seed/assets/README.md`, `images-validation.json`, 각 run verification |
+| 프론트 회귀 | `npm run lint`, `npm run typecheck`, `npm run build` 모두 exit 0 | `frontend-*.log`, `frontend-*.json` |
+| 최종 BE | `gradlew.bat clean build --no-build-cache` exit 0, 20분 11초. UTC·Asia/Seoul 각각 app 271 + engine 96 = 367건, 총 734건 실패/오류/skip 0. verifyTimeSources 152개 파일·위반 0. CI JUnit 보고서 검증기 PASS | `clean-build.log`, `clean-build-command.json`, `test-summary.json`, `ci-report-verifier.log`, `final/` XML |
+| 범위·비밀값 | 시작 SHA 대비 backend/frontend/API/EVENTS diff 없음. 추적 후보 409파일 및 증거 58파일에서 실제 비밀값 9개 일치 0건. 로그/JSON의 JWT·Refresh 쿠키 패턴도 0건 | `credential-scan.json`, git diff, 정적 검색 |
+
+DB 수량 확인은 읽기 전용 SELECT다. 업무 데이터 INSERT/UPDATE/DELETE SQL을 실행하지 않았다. Flyway와 기존 ADMIN bootstrap을 제외한 시연 데이터는 모두 제품 API로 생성했다. 기존 개발 MySQL과 데이터는 유지했다.
+
+### 수용 기준별 판정
+
+| 기준 | 결과 | 실제 근거 |
+|---|---|---|
+| 빈 DB에서 N×M·X분 뒤 예정 회차 생성 | PASS | 최초 테이블 0개 증거 및 기존 ADMIN 준비 후 첫 실행. 회차/레인 SCHEDULED/READY, Lot PENDING·순번 1~M, 시간 차 30분. 다른 1×3·45분 인자도 확인 |
+| 연속 두 번 실행 성공·기존 계정 처리 | PASS | 첫/둘째 exit 0, 회원 ID 동일·두 번째 가입 충돌 4건을 정상 로그인으로 처리, 회차·Item·Lot ID 비중복 |
+| 계정·ADMIN 비밀번호 비커밋 | PASS | 예시 비밀번호 공란, git check-ignore 실제 로컬 파일/결과 무시·예시 추적, 실제 비밀값 및 토큰 패턴 검사 |
+| M1 시연 상태 1~5 | PASS — 이번 데이터 범위 | 기본 판매자 2명·승인 4/반려 1, 최저가 생략/명시 혼합, 홈·P-03·Lot·U-02·A-03 실제 확인. ‘내일 20시’는 예시, 시드 인자 X를 적용 |
+| 관련 PRD AC | PASS — 시드 사용 경로 | AC-01-1/4, AC-02-1/5 및 공개 필드 비노출, AC-03-1/2, AC-04-1/3·예정시각 저장, AC-05-1. 전체 기존 AC·실제 경매 시작/완주를 재검증했다고 주장하지 않음 |
+
+### 실제 화면과 증거의 범위
+
+- 실제 MySQL(33310) + bootRun(31080/관리 31081) + Vite(35173), 별도 Chrome 세션 `m110-proof`를 사용했다. 성공 응답을 합성하거나 브라우저 route로 대체하지 않았다.
+- 익명 홈에서 두 예정 회차와 각 레인 2개·물품 4개·카운트다운을 확인했다. 회차 1·2의 P-03 미리보기와 회차 1의 첫 Lot 상세·실제 PNG·설명·시작가를 확인했다. 추가 회차 3의 1레인×3Lot도 화면에 표시된다. `home.png`, `session-1-snapshot.log`, `session-1.png`, `session-2.log/png`, `session-3.log/png`, `lot-modal.log/png`.
+- 판매자 1·2를 실제 로그인 화면으로 로그인해 U-02 편성됨과 반려 사유를 확인했다. ADMIN도 실제 로그인해 회차 2의 A-03 저장 2개씩·시작 가능 표시를 확인했다. `seller-1.log/png`, `seller-2.log/png`, `admin-lineup.log/png`. 로그인 증거에는 비밀번호를 마스킹했다.
+- 브라우저 콘솔의 오류 2건은 익명 상태에서 기존 인증 복구가 받은 `/api/auth/refresh` 401이며 시드 실패가 아니다(`console-errors.log`). 제품 소스 변경으로 숨기지 않았다.
+- 스크립트의 통제 HTTP 서버 테스트는 응답 유실 시 자동 재시도하지 않는 분기를 검사한다. 실제 DB commit ACK 유실·DB 네트워크 단절·전원 장애를 재현한 것은 아니다.
+
+### 직접 확인하는 방법
+
+현재 검증 서버가 실행 중일 때 저장소 루트에서 새 시연 데이터를 만들려면:
+
+```powershell
+node --env-file=simulator/.env.m1-10.local simulator/seed/seed-demo.mjs --lanes 2 --lots-per-lane 2 --starts-in-minutes 30
+# 같은 명령을 한 번 더 실행한다. 기존 결과·DB를 지우지 않는다.
+node --env-file=simulator/.env.m1-10.local simulator/seed/seed-demo.mjs --lanes 2 --lots-per-lane 2 --starts-in-minutes 30
+curl.exe 'http://127.0.0.1:31080/api/sessions?status=SCHEDULED'
+curl.exe 'http://127.0.0.1:31080/api/sessions/1'
+curl.exe 'http://127.0.0.1:31080/api/lots/1'
+node --test simulator/seed/api-client.test.mjs simulator/seed/seed-demo.test.mjs
+cd backend
+.\gradlew.bat clean build
+cd ../frontend
+npm run lint
+npm run typecheck
+npm run build
+```
+
+- `http://127.0.0.1:35173/` → 예정 회차 → 레인 미리보기 → 물품 상세. 새 실행은 출력된 `session.viewerUrl`을 사용한다. 기존 회차 예정시각은 시간이 지나면 과거가 되므로 미래 시연에는 새로 실행한다.
+- 판매자 계정으로 로그인 → 내 출품 목록 → 편성됨·반려 사유. ADMIN 로그인 → 회차 관리 → 편성 → 시작 가능. 자격 정보는 위 로컬 환경 파일에서 확인하고 공개 로그·채팅에 복사하지 않는다.
+- 새 clone/일반 8080·5173 환경과 ADMIN 준비·환경변수·결과 해석은 [simulator/README.md](../simulator/README.md)를 따른다. 이 로컬 검증 환경 파일과 증거는 저장소에 포함되지 않는다.
+
+### 핵심 이유·깨질 수 있는 상황·후속
+
+- 실제 API를 사용하므로 가입·출품·검수·편성의 기존 검증과 잠금을 지난다. 단순 INSERT로 완성 상태를 만들면 검증·이미지·stage 규칙을 건너뛰어 시연 증거가 될 수 없다.
+- 같은 계정으로 새로운 Item을 만들어 기존 회차 중복 편성 금지를 지킨다. 실행 전체의 원자성이나 동일 요청 결과 재생은 없다. 중간 실패 이전 커밋은 남고, 커밋 뒤 응답 유실이면 결과 파일에 없는 자원이 생길 수 있다. API·화면 확인 뒤 재실행 여부를 판단한다.
+- 같은 회차를 운영자가 동시에 편집하면 전체 저장 순서에 따라 편성이 달라진다. 끝의 공개 재조회는 관측 시점의 상태를 확인할 뿐 이후 변경까지 잠그지 않는다. 기존 회차·Item 락 및 서버 Clock 규칙을 우회하지 않는다.
+- X분은 서버 시각 표본 기준이다. 긴 실행·네트워크 지연·서버 시계 점프로 예정시각이 지나거나 기존 API가 거절할 수 있다. 최종 조회가 지난 시각을 감지하면 FAIL이며 시각을 몰래 연장하지 않는다.
+- M2-10·M4 k6와 M4-02 봇은 `simulator/`의 별도 진입점으로 확장한다. Node와 k6의 런타임 API를 공유한다고 가정하지 않는다. CH-11 구성·성능 규모·봇 행동·OQ-30, OQ-35/38 등 다른 작업 결정은 남긴다.
+- **NOT_RUN:** 실제 자동 시작·입찰·낙찰/거래·운영 타이머·실제 레인 이벤트/seq·서버 재시작 복구·부하/성능·장시간 토큰 자연 만료·DB commit ACK 유실/전원 장애·운영 TLS/AWS/배포. 기존 전체 회귀 테스트를 이 미구현 경로의 증거로 쓰지 않는다. 원격 CI 결과는 PR·완료 보고에서 로컬 결과와 구분한다.
+
+---
+
 ## M1-09 레인 상태 머신 (순수 판단)
 
 - 작업일: 2026-10-28 (Asia/Seoul).
